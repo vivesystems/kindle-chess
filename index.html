@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="keywords" content="Chess, Kindle, Paperwhite" />
+    <title>Kindle Chess</title>
+    <link href="stylesheets/styles.css" rel="stylesheet" type="text/css" />
+    <script type="text/javascript">
+      if (!window.console) console = { log: function () {} };
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <div id="board"></div>
+      <div id="panel">
+        <div id="status">Loading</div>
+        <div id="stats"></div>
+        <div id="controls">
+          <button type="button" id="new">New</button>
+          <button type="button" id="flip">Flip</button>
+          <button type="button" id="undo">Undo</button>
+          <button type="button" id="go">Move</button>
+        </div>
+        <div id="time-row">
+          Time
+          <select id="time">
+            <option value="1">1s</option>
+            <option value="2" selected="selected">2s</option>
+            <option value="4">4s</option>
+            <option value="6">6s</option>
+            <option value="8">8s</option>
+            <option value="10">10s</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <script src="js/engine.js"></script>
+    <script src="js/gui.js"></script>
+  </body>
+</html>
