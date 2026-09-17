@@ -1,4 +1,8 @@
-var GUI_SCRIPT_VERSION = "v1.3.1-202609171945";
+var GUI_SCRIPT_VERSION = "v1.4.0-202609171950";
+var ARROW_LINE_RATIO = 0.06;
+var ARROW_OUTLINE_RATIO = 0.04;
+var ARROW_HEAD_RATIO = 0.22;
+var ARROW_TIP_OFFSET = 0.34;
 var LAYOUT_TOP_SPACE = 48;
 var LAYOUT_EDGE_SPACE = 8;
 var LAYOUT_PANEL_SPACE = 150;
@@ -18,6 +22,7 @@ var IgnoreClicksUntil = 0;
 var UserMove = { from: SQUARES.NO_SQ, to: SQUARES.NO_SQ };
 var LastFrom = SQUARES.NO_SQ;
 var LastTo = SQUARES.NO_SQ;
+var LastMoveWasEngine = false;
 var searchTimer = null;
 var srch_abort = BOOL.FALSE;
 
@@ -165,6 +170,69 @@ function DrawBoard() {
       if (rebuild) boardEl.appendChild(div);
     }
   }
+  DrawMoveArrow();
+}
+
+function DrawMoveArrow() {
+  var canvas = ById("move-arrow");
+  if (!LastMoveWasEngine || LastFrom == SQUARES.NO_SQ || LastTo == SQUARES.NO_SQ) {
+    if (canvas && canvas.style.display != "none") canvas.style.display = "none";
+    return;
+  }
+  if (!canvas) {
+    canvas = document.createElement("canvas");
+    canvas.id = "move-arrow";
+    canvas.style.position = "absolute";
+    canvas.style.left = "0";
+    canvas.style.top = "0";
+    canvas.style.zIndex = "1";
+    canvas.style.pointerEvents = "none";
+    ById("board").appendChild(canvas);
+  }
+  if (!canvas.getContext) return;
+  var context = canvas.getContext("2d");
+  if (!context) return;
+  canvas.width = SQ_SIZE * 8;
+  canvas.height = SQ_SIZE * 8;
+  canvas.style.display = "block";
+  var flipped = GameController.BoardFlipped == BOOL.TRUE;
+  var from = flipped ? MIRROR120(LastFrom) : LastFrom;
+  var to = flipped ? MIRROR120(LastTo) : LastTo;
+  var startX = (FilesBrd[from] + 0.5) * SQ_SIZE;
+  var startY = (7.5 - RanksBrd[from]) * SQ_SIZE;
+  var endX = (FilesBrd[to] + 0.5) * SQ_SIZE;
+  var endY = (7.5 - RanksBrd[to]) * SQ_SIZE;
+  var dx = endX - startX;
+  var dy = endY - startY;
+  var length = Math.sqrt(dx * dx + dy * dy);
+  var ux = dx / length;
+  var uy = dy / length;
+  var head = SQ_SIZE * ARROW_HEAD_RATIO;
+  endX -= ux * SQ_SIZE * ARROW_TIP_OFFSET;
+  endY -= uy * SQ_SIZE * ARROW_TIP_OFFSET;
+  var baseX = endX - ux * head;
+  var baseY = endY - uy * head;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.beginPath();
+  context.moveTo(startX, startY);
+  context.lineTo(baseX, baseY);
+  context.strokeStyle = "#fff";
+  context.lineWidth = SQ_SIZE * (ARROW_LINE_RATIO + ARROW_OUTLINE_RATIO * 2);
+  context.stroke();
+  context.strokeStyle = "#000";
+  context.lineWidth = SQ_SIZE * ARROW_LINE_RATIO;
+  context.stroke();
+  context.beginPath();
+  context.moveTo(endX, endY);
+  context.lineTo(baseX - uy * head / 2, baseY + ux * head / 2);
+  context.lineTo(baseX + uy * head / 2, baseY - ux * head / 2);
+  context.closePath();
+  context.strokeStyle = "#fff";
+  context.lineWidth = SQ_SIZE * ARROW_OUTLINE_RATIO * 2;
+  context.stroke();
+  context.fillStyle = "#000";
+  context.fill();
 }
 
 function CacheLegalMoves() {
@@ -235,11 +303,12 @@ function Deselect() {
   SelectSquare(SQUARES.NO_SQ);
 }
 
-function PlayMove(move) {
+function PlayMove(move, engineMove) {
   if (move == NOMOVE) return;
   if (MakeMove(move) == BOOL.FALSE) return;
   LastFrom = FROMSQ(move);
   LastTo = TOSQ(move);
+  LastMoveWasEngine = engineMove === true;
   UserMove.from = SQUARES.NO_SQ;
   UserMove.to = SQUARES.NO_SQ;
   DrawBoard();
@@ -268,7 +337,7 @@ function FinishEngineMove() {
     line = "d" + srch_depthFound + " " + ScoreText(srch_score) + " n" + srch_nodes;
     SetStats(line);
   }
-  PlayMove(move);
+  PlayMove(move, true);
   if (GameController.GameOver != BOOL.TRUE && brd_side != GameController.PlayerSide) {
     PreSearch();
   }
@@ -362,6 +431,18 @@ function OnBoardClick(e) {
 
 function ActivateBoardSquare(e) {
   var target = e.target || e.srcElement;
+  if (target && target.id == "move-arrow") {
+    var point = e.changedTouches ? e.changedTouches[0] : e;
+    var rect = ById("board").getBoundingClientRect();
+    var col = Math.floor((point.clientX - rect.left - ById("board").clientLeft) / SQ_SIZE);
+    var row = Math.floor((point.clientY - rect.top - ById("board").clientTop) / SQ_SIZE);
+    if (col < 0 || col > 7 || row < 0 || row > 7) return;
+    var square = FR2SQ(col, 7 - row);
+    if (GameController.BoardFlipped == BOOL.TRUE) square = MIRROR120(square);
+    HandleSquareClick(square);
+    if (e.preventDefault) e.preventDefault();
+    return false;
+  }
   while (target && target.id != "board" && (!target.id || target.id.indexOf("sq-") != 0)) {
     target = target.parentNode;
   }
@@ -421,6 +502,7 @@ function NewGame() {
   ParseFen(START_FEN);
   LastFrom = SQUARES.NO_SQ;
   LastTo = SQUARES.NO_SQ;
+  LastMoveWasEngine = false;
   UserMove.from = SQUARES.NO_SQ;
   UserMove.to = SQUARES.NO_SQ;
   GameController.PlayerSide = GameController.BoardFlipped == BOOL.TRUE ? COLOURS.BLACK : COLOURS.WHITE;
@@ -433,6 +515,7 @@ function NewGame() {
 
 function UndoMove() {
   if (srch_thinking == BOOL.TRUE) return;
+  LastMoveWasEngine = false;
   var take = 1;
   if (brd_hisPly >= 2) take = 2;
   if (brd_hisPly < take) take = brd_hisPly;
