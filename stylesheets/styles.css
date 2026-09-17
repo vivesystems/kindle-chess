@@ -61,17 +61,30 @@ body {
   text-align: center;
 }
 
+#status-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 4px 0;
+}
+
+#status-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 #status {
   font-size: 22px;
   font-weight: bold;
   min-height: 28px;
-  margin: 4px 0;
+  margin: 0;
 }
 
 #stats {
   font-size: 16px;
   min-height: 22px;
-  margin: 2px 0 8px 0;
+  margin: 2px 0 0 0;
 }
 
 #controls {
@@ -85,7 +98,8 @@ body {
   height: 52px;
   margin: 1%;
   float: left;
-  font-size: 18px;
+  padding: 0 4px;
+  font-size: 22px;
   font-weight: bold;
   color: #000;
   background: #fff;
@@ -93,16 +107,18 @@ body {
 }
 
 #time-row {
-  clear: both;
-  padding-top: 8px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
   font-size: 18px;
+  white-space: nowrap;
 }
 
 #time {
   font-size: 18px;
   height: 40px;
   min-width: 72px;
-  margin-left: 8px;
+  margin-left: 6px;
   border: 2px solid #000;
   background: #fff;
   color: #000;
