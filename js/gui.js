@@ -1,4 +1,4 @@
-var GUI_SCRIPT_VERSION = "v1.3.0-202609171938";
+var GUI_SCRIPT_VERSION = "v1.3.1-202609171945";
 var LAYOUT_TOP_SPACE = 48;
 var LAYOUT_EDGE_SPACE = 8;
 var LAYOUT_PANEL_SPACE = 150;
@@ -253,6 +253,12 @@ function FinishEngineMove() {
   var move = srch_best;
   if (move == NOMOVE) {
     CheckAndSet();
+    return;
+  }
+  if (MoveExists(move) != BOOL.TRUE) {
+    GameController.GameOver = BOOL.TRUE;
+    SetStatus("Engine error. Press New.");
+    SetStats("Illegal engine move rejected");
     return;
   }
   var line = "";

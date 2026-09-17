@@ -1,4 +1,4 @@
-var SCRIPT_VERSION = "v2.0.2-202609171819";
+var SCRIPT_VERSION = "v2.0.3-202609171945";
 
 var PIECES = {
   EMPTY: 0,
@@ -1084,6 +1084,7 @@ function TakeMove() {
 }
 
 function MakeNullMove() {
+  brd_moveListStart[brd_ply + 1] = brd_moveListStart[brd_ply];
   brd_history[brd_hisPly].posKey = brd_posKey;
   brd_history[brd_hisPly].move = NOMOVE;
   brd_history[brd_hisPly].fiftyMove = brd_fiftyMove;
