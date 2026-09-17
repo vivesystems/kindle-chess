@@ -57,7 +57,7 @@ body {
 }
 
 #panel {
-  margin: 8px 4px 12px 4px;
+  margin: 8px auto 12px auto;
   text-align: center;
 }
 

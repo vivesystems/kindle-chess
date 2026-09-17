@@ -92,6 +92,8 @@ function LayoutBoard() {
   if (maxSq > 0 && maxSq < SQ_SIZE) SQ_SIZE = maxSq;
   if (SQ_SIZE > 120) SQ_SIZE = 120;
   if (SQ_SIZE < 36) SQ_SIZE = 36;
+  var panelEl = ById("panel");
+  if (panelEl) panelEl.style.width = SQ_SIZE * 8 + 4 + "px";
 }
 
 function DrawBoard() {
