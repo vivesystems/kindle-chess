@@ -1,4 +1,4 @@
-var GUI_SCRIPT_VERSION = "v1.2.3-202609171933";
+var GUI_SCRIPT_VERSION = "v1.3.0-202609171938";
 var LAYOUT_TOP_SPACE = 48;
 var LAYOUT_EDGE_SPACE = 8;
 var LAYOUT_PANEL_SPACE = 150;
@@ -9,6 +9,10 @@ var SQ_SIZE = 72;
 var BoardSize = 0;
 var BoardFlipped = null;
 var RenderedPieces = [];
+var HighlightedSquares = [];
+var CachedMoveKey = null;
+var CachedMoveCount = 0;
+var CachedMoves = [];
 var BoardTouch = null;
 var IgnoreClicksUntil = 0;
 var UserMove = { from: SQUARES.NO_SQ, to: SQUARES.NO_SQ };
@@ -59,7 +63,8 @@ function GameResult() {
   if (brd_fiftyMove >= 100) return "Draw, 50-move";
   if (ThreeFoldRep() >= 2) return "Draw, repetition";
   if (DrawMaterial() == BOOL.TRUE) return "Draw, material";
-  if (LegalMoveCount() != 0) return "";
+  CacheLegalMoves();
+  if (CachedMoveCount != 0) return "";
   if (InCheckNow() == BOOL.TRUE) {
     if (brd_side == COLOURS.WHITE) return "Black mates";
     return "White mates";
@@ -115,9 +120,9 @@ function DrawBoard() {
   var div;
   var img;
   var pce;
-  var light;
   var className;
   var hints = UserMove.from != SQUARES.NO_SQ ? MoveHints(UserMove.from) : [];
+  HighlightedSquares = [];
   for (row = 0; row < 8; row++) {
     for (col = 0; col < 8; col++) {
       if (flipped) {
@@ -128,7 +133,6 @@ function DrawBoard() {
         rank = 7 - row;
       }
       sq = FR2SQ(file, rank);
-      light = (file + rank) % 2 != 0;
       div = rebuild ? document.createElement("div") : ById("sq-" + sq);
       if (rebuild) {
         div.id = "sq-" + sq;
@@ -137,10 +141,8 @@ function DrawBoard() {
         div.style.width = SQ_SIZE + "px";
         div.style.height = SQ_SIZE + "px";
       }
-      className = "square " + (light ? "light" : "dark");
-      if (sq == LastFrom || sq == LastTo) className += " last";
-      if (sq == UserMove.from) className += " selected";
-      if (hints[sq]) className += " hint";
+      className = SquareClassName(sq, hints);
+      if (sq == UserMove.from || hints[sq]) HighlightedSquares[sq] = true;
       if (div.className != className) div.className = className;
       pce = brd_pieces[sq];
       if (RenderedPieces[sq] != pce) {
@@ -165,29 +167,77 @@ function DrawBoard() {
   }
 }
 
-function MoveHints(from) {
-  var hints = [];
+function CacheLegalMoves() {
+  if (CachedMoveKey === brd_posKey) return;
+  CachedMoves = [];
+  CachedMoveCount = 0;
   GenerateMoves();
   var i;
   var mv;
+  var from;
+  var promoted;
   for (i = brd_moveListStart[brd_ply]; i < brd_moveListStart[brd_ply + 1]; i++) {
     mv = brd_moveList[i];
-    if (FROMSQ(mv) != from) continue;
     if (MakeMove(mv) == BOOL.FALSE) continue;
     TakeMove();
-    hints[TOSQ(mv)] = true;
+    CachedMoveCount++;
+    promoted = PROMOTED(mv);
+    if (promoted != PIECES.EMPTY && promoted != PIECES.wQ && promoted != PIECES.bQ) continue;
+    from = FROMSQ(mv);
+    if (!CachedMoves[from]) CachedMoves[from] = [];
+    CachedMoves[from][TOSQ(mv)] = mv;
   }
-  return hints;
+  CachedMoveKey = brd_posKey;
+}
+
+function MoveHints(from) {
+  CacheLegalMoves();
+  return CachedMoves[from] || [];
+}
+
+function SquareClassName(sq, hints) {
+  var light = (FilesBrd[sq] + RanksBrd[sq]) % 2 != 0;
+  var name = "square " + (light ? "light" : "dark");
+  if (sq == LastFrom || sq == LastTo) name += " last";
+  if (sq == UserMove.from) name += " selected";
+  if (hints[sq]) name += " hint";
+  return name;
+}
+
+function SelectSquare(from) {
+  var changed = HighlightedSquares;
+  HighlightedSquares = [];
+  UserMove.from = from;
+  UserMove.to = SQUARES.NO_SQ;
+  var hints = from != SQUARES.NO_SQ ? MoveHints(from) : [];
+  var sq;
+  var el;
+  var name;
+  if (from != SQUARES.NO_SQ) {
+    changed[from] = true;
+    HighlightedSquares[from] = true;
+  }
+  for (sq in hints) {
+    if (!hints.hasOwnProperty(sq)) continue;
+    changed[sq] = true;
+    HighlightedSquares[sq] = true;
+  }
+  for (sq in changed) {
+    if (!changed.hasOwnProperty(sq)) continue;
+    el = ById("sq-" + sq);
+    if (!el) continue;
+    name = SquareClassName(sq, hints);
+    if (el.className != name) el.className = name;
+  }
 }
 
 function Deselect() {
-  UserMove.from = SQUARES.NO_SQ;
-  UserMove.to = SQUARES.NO_SQ;
+  SelectSquare(SQUARES.NO_SQ);
 }
 
 function PlayMove(move) {
   if (move == NOMOVE) return;
-  MakeMove(move);
+  if (MakeMove(move) == BOOL.FALSE) return;
   LastFrom = FROMSQ(move);
   LastTo = TOSQ(move);
   UserMove.from = SQUARES.NO_SQ;
@@ -274,25 +324,21 @@ function HandleSquareClick(sq) {
   var pce = brd_pieces[sq];
   if (UserMove.from == SQUARES.NO_SQ) {
     if (pce != PIECES.EMPTY && PieceCol[pce] == brd_side) {
-      UserMove.from = sq;
-      DrawBoard();
+      SelectSquare(sq);
     }
     return;
   }
   if (sq == UserMove.from) {
     Deselect();
-    DrawBoard();
     return;
   }
   if (pce != PIECES.EMPTY && PieceCol[pce] == brd_side) {
-    UserMove.from = sq;
-    DrawBoard();
+    SelectSquare(sq);
     return;
   }
-  var parsed = ParseMove(UserMove.from, sq);
+  var parsed = MoveHints(UserMove.from)[sq] || NOMOVE;
   if (parsed == NOMOVE) {
     Deselect();
-    DrawBoard();
     return;
   }
   PlayMove(parsed);
