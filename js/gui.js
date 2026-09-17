@@ -1,4 +1,12 @@
+var GUI_SCRIPT_VERSION = "v1.1.0-202609171913";
+var TOUCH_MOVE_TOLERANCE = 12;
+var TOUCH_CLICK_DELAY = 700;
 var SQ_SIZE = 72;
+var BoardSize = 0;
+var BoardFlipped = null;
+var RenderedPieces = [];
+var BoardTouch = null;
+var IgnoreClicksUntil = 0;
 var UserMove = { from: SQUARES.NO_SQ, to: SQUARES.NO_SQ };
 var LastFrom = SQUARES.NO_SQ;
 var LastTo = SQUARES.NO_SQ;
@@ -14,22 +22,6 @@ function MIRROR120(sq) {
 
 function ById(id) {
   return document.getElementById(id);
-}
-
-function HasClass(el, name) {
-  return (" " + el.className + " ").indexOf(" " + name + " ") != -1;
-}
-
-function AddClass(el, name) {
-  if (el && !HasClass(el, name)) el.className += " " + name;
-}
-
-function RemoveClass(el, name) {
-  if (!el) return;
-  var c = " " + el.className + " ";
-  var n = " " + name + " ";
-  while (c.indexOf(n) != -1) c = c.replace(n, " ");
-  el.className = StrTrim(c);
 }
 
 function PieceFileName(pce) {
@@ -100,9 +92,16 @@ function DrawBoard() {
   var boardEl = ById("board");
   if (!boardEl) return;
   var boardPx = SQ_SIZE * 8;
-  boardEl.style.width = boardPx + "px";
-  boardEl.style.height = boardPx + "px";
-  boardEl.innerHTML = "";
+  var flipped = GameController.BoardFlipped == BOOL.TRUE;
+  var rebuild = BoardSize != SQ_SIZE || BoardFlipped != flipped;
+  if (rebuild) {
+    boardEl.style.width = boardPx + "px";
+    boardEl.style.height = boardPx + "px";
+    boardEl.innerHTML = "";
+    RenderedPieces = [];
+    BoardSize = SQ_SIZE;
+    BoardFlipped = flipped;
+  }
   var row;
   var col;
   var file;
@@ -112,7 +111,8 @@ function DrawBoard() {
   var img;
   var pce;
   var light;
-  var flipped = GameController.BoardFlipped == BOOL.TRUE;
+  var className;
+  var hints = UserMove.from != SQUARES.NO_SQ ? MoveHints(UserMove.from) : [];
   for (row = 0; row < 8; row++) {
     for (col = 0; col < 8; col++) {
       if (flipped) {
@@ -124,44 +124,44 @@ function DrawBoard() {
       }
       sq = FR2SQ(file, rank);
       light = (file + rank) % 2 != 0;
-      div = document.createElement("div");
-      div.id = "sq-" + sq;
-      div.className = "square " + (light ? "light" : "dark");
-      div.style.left = col * SQ_SIZE + "px";
-      div.style.top = row * SQ_SIZE + "px";
-      div.style.width = SQ_SIZE + "px";
-      div.style.height = SQ_SIZE + "px";
-      pce = brd_pieces[sq];
-      if (pce >= PIECES.wP && pce <= PIECES.bK) {
-        img = document.createElement("img");
-        img.src = PieceFileName(pce);
-        img.width = SQ_SIZE;
-        img.height = SQ_SIZE;
-        img.className = "piece";
-        img.draggable = false;
-        div.appendChild(img);
+      div = rebuild ? document.createElement("div") : ById("sq-" + sq);
+      if (rebuild) {
+        div.id = "sq-" + sq;
+        div.style.left = col * SQ_SIZE + "px";
+        div.style.top = row * SQ_SIZE + "px";
+        div.style.width = SQ_SIZE + "px";
+        div.style.height = SQ_SIZE + "px";
       }
-      boardEl.appendChild(div);
+      className = "square " + (light ? "light" : "dark");
+      if (sq == LastFrom || sq == LastTo) className += " last";
+      if (sq == UserMove.from) className += " selected";
+      if (hints[sq]) className += " hint";
+      if (div.className != className) div.className = className;
+      pce = brd_pieces[sq];
+      if (RenderedPieces[sq] != pce) {
+        img = div.firstChild;
+        if (pce >= PIECES.wP && pce <= PIECES.bK) {
+          if (!img) {
+            img = document.createElement("img");
+            img.width = SQ_SIZE;
+            img.height = SQ_SIZE;
+            img.className = "piece";
+            img.draggable = false;
+            div.appendChild(img);
+          }
+          img.src = PieceFileName(pce);
+        } else if (img) {
+          div.removeChild(img);
+        }
+        RenderedPieces[sq] = pce;
+      }
+      if (rebuild) boardEl.appendChild(div);
     }
   }
-  if (LastFrom != SQUARES.NO_SQ) AddClass(ById("sq-" + LastFrom), "last");
-  if (LastTo != SQUARES.NO_SQ) AddClass(ById("sq-" + LastTo), "last");
-  if (UserMove.from != SQUARES.NO_SQ) {
-    AddClass(ById("sq-" + UserMove.from), "selected");
-    MarkHints(UserMove.from);
-  }
 }
 
-function ClearHints() {
-  var i;
-  var el;
-  for (i = 0; i < 64; i++) {
-    el = ById("sq-" + SQ120(i));
-    if (el) RemoveClass(el, "hint");
-  }
-}
-
-function MarkHints(from) {
+function MoveHints(from) {
+  var hints = [];
   GenerateMoves();
   var i;
   var mv;
@@ -170,20 +170,14 @@ function MarkHints(from) {
     if (FROMSQ(mv) != from) continue;
     if (MakeMove(mv) == BOOL.FALSE) continue;
     TakeMove();
-    AddClass(ById("sq-" + TOSQ(mv)), "hint");
+    hints[TOSQ(mv)] = true;
   }
+  return hints;
 }
 
 function Deselect() {
   UserMove.from = SQUARES.NO_SQ;
   UserMove.to = SQUARES.NO_SQ;
-  ClearHints();
-  var i;
-  var el;
-  for (i = 0; i < 64; i++) {
-    el = ById("sq-" + SQ120(i));
-    if (el) RemoveClass(el, "selected");
-  }
 }
 
 function PlayMove(move) {
@@ -301,6 +295,15 @@ function HandleSquareClick(sq) {
 }
 
 function OnBoardClick(e) {
+  e = e || window.event;
+  if (Now() < IgnoreClicksUntil) {
+    if (e.preventDefault) e.preventDefault();
+    return false;
+  }
+  return ActivateBoardSquare(e);
+}
+
+function ActivateBoardSquare(e) {
   var target = e.target || e.srcElement;
   while (target && target.id != "board" && (!target.id || target.id.indexOf("sq-") != 0)) {
     target = target.parentNode;
@@ -310,6 +313,44 @@ function OnBoardClick(e) {
   HandleSquareClick(sq);
   if (e && e.preventDefault) e.preventDefault();
   return false;
+}
+
+function OnBoardTouchStart(e) {
+  BoardTouch = null;
+  if (e.touches.length != 1) return;
+  var touch = e.touches[0];
+  BoardTouch = { id: touch.identifier, x: touch.clientX, y: touch.clientY };
+}
+
+function OnBoardTouchMove(e) {
+  if (!BoardTouch) return;
+  if (e.touches.length != 1) {
+    BoardTouch = null;
+    return;
+  }
+  var touch = e.touches[0];
+  if (touch.identifier != BoardTouch.id ||
+      Math.abs(touch.clientX - BoardTouch.x) > TOUCH_MOVE_TOLERANCE ||
+      Math.abs(touch.clientY - BoardTouch.y) > TOUCH_MOVE_TOLERANCE) BoardTouch = null;
+}
+
+function OnBoardTouchEnd(e) {
+  var start = BoardTouch;
+  BoardTouch = null;
+  if (!e.cancelable) return;
+  e.preventDefault();
+  IgnoreClicksUntil = Now() + TOUCH_CLICK_DELAY;
+  if (!start || e.touches.length != 0 || e.changedTouches.length != 1) return;
+  var touch = e.changedTouches[0];
+  if (touch.identifier != start.id ||
+      Math.abs(touch.clientX - start.x) > TOUCH_MOVE_TOLERANCE ||
+      Math.abs(touch.clientY - start.y) > TOUCH_MOVE_TOLERANCE) return;
+  ActivateBoardSquare(e);
+}
+
+function OnBoardTouchCancel() {
+  BoardTouch = null;
+  IgnoreClicksUntil = Now() + TOUCH_CLICK_DELAY;
 }
 
 function NewGame() {
@@ -383,6 +424,10 @@ function InitGui() {
   LayoutBoard();
   var boardEl = ById("board");
   Bind(boardEl, "click", OnBoardClick);
+  Bind(boardEl, "touchstart", OnBoardTouchStart);
+  Bind(boardEl, "touchmove", OnBoardTouchMove);
+  Bind(boardEl, "touchend", OnBoardTouchEnd);
+  Bind(boardEl, "touchcancel", OnBoardTouchCancel);
   Bind(ById("new"), "click", NewGame);
   Bind(ById("flip"), "click", FlipBoard);
   Bind(ById("undo"), "click", UndoMove);
