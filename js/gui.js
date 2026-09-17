@@ -1,4 +1,5 @@
-var GUI_SCRIPT_VERSION = "v1.2.0-202609171923";
+var GUI_SCRIPT_VERSION = "v1.2.1-202609171926";
+var LAYOUT_TOP_SPACE = 32;
 var LAYOUT_EDGE_SPACE = 8;
 var LAYOUT_PANEL_SPACE = 150;
 var MAX_SQUARE_SIZE = 120;
@@ -85,7 +86,9 @@ function LayoutBoard() {
   if (window.innerHeight > 0 && window.innerHeight < h) h = window.innerHeight;
   SQ_SIZE = Math.max(1, Math.min(MAX_SQUARE_SIZE,
     Math.floor((w - LAYOUT_EDGE_SPACE) / 8),
-    Math.floor((h - LAYOUT_PANEL_SPACE) / 8)));
+    Math.floor((h - LAYOUT_PANEL_SPACE - LAYOUT_TOP_SPACE) / 8)));
+  var boardEl = ById("board");
+  if (boardEl) boardEl.style.marginTop = LAYOUT_TOP_SPACE + "px";
   var panelEl = ById("panel");
   if (panelEl) panelEl.style.width = SQ_SIZE * 8 + 4 + "px";
 }
