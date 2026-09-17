@@ -1,4 +1,5 @@
-var GUI_SCRIPT_VERSION = "v1.4.0-202609171950";
+var GUI_SCRIPT_VERSION = "v1.5.0-202609171958";
+var DEFAULT_OPENING_MOVE = "e2e4";
 var ARROW_LINE_RATIO = 0.06;
 var ARROW_OUTLINE_RATIO = 0.04;
 var ARROW_HEAD_RATIO = 0.22;
@@ -25,6 +26,8 @@ var LastTo = SQUARES.NO_SQ;
 var LastMoveWasEngine = false;
 var searchTimer = null;
 var srch_abort = BOOL.FALSE;
+var SetupOpen = true;
+var StartingHistoryPly = 0;
 
 var MirrorFiles = [FILES.FILE_H, FILES.FILE_G, FILES.FILE_F, FILES.FILE_E, FILES.FILE_D, FILES.FILE_C, FILES.FILE_B, FILES.FILE_A];
 var MirrorRanks = [RANKS.RANK_8, RANKS.RANK_7, RANKS.RANK_6, RANKS.RANK_5, RANKS.RANK_4, RANKS.RANK_3, RANKS.RANK_2, RANKS.RANK_1];
@@ -384,15 +387,17 @@ function StartSearch() {
 }
 
 function PreSearch() {
+  if (SetupOpen) return;
   if (GameController.GameOver == BOOL.TRUE) return;
   if (srch_thinking == BOOL.TRUE) return;
   srch_abort = BOOL.FALSE;
   srch_thinking = BOOL.TRUE;
   SetStatus("Thinking...");
-  setTimeout(StartSearch, 40);
+  searchTimer = setTimeout(StartSearch, 40);
 }
 
 function HandleSquareClick(sq) {
+  if (SetupOpen) return;
   if (srch_thinking == BOOL.TRUE) return;
   if (GameController.GameOver == BOOL.TRUE) return;
   if (GameController.PlayerSide != brd_side) return;
@@ -491,7 +496,7 @@ function OnBoardTouchCancel() {
   IgnoreClicksUntil = Now() + TOUCH_CLICK_DELAY;
 }
 
-function NewGame() {
+function StopSearch() {
   if (searchTimer) {
     clearTimeout(searchTimer);
     searchTimer = null;
@@ -499,6 +504,67 @@ function NewGame() {
   srch_abort = BOOL.TRUE;
   srch_thinking = BOOL.FALSE;
   srch_stop = BOOL.TRUE;
+}
+
+function UpdateSetup() {
+  var test = ById("game-mode").value == "test";
+  var white = ById("opponent-side").value == "white";
+  ById("test-options").style.display = test ? "block" : "none";
+  ById("opening-options").style.display = white ? "block" : "none";
+  ById("setup-description").innerHTML = test && white ?
+    "Choose White's opening move, then play Black against the opponent." :
+    "You play White. The opponent plays Black.";
+}
+
+function PopulateOpenings() {
+  ParseFen(START_FEN);
+  CacheLegalMoves();
+  var moves = [];
+  var from;
+  var to;
+  for (from in CachedMoves) {
+    if (!CachedMoves.hasOwnProperty(from)) continue;
+    for (to in CachedMoves[from]) {
+      if (CachedMoves[from].hasOwnProperty(to)) moves.push(PrMove(CachedMoves[from][to]));
+    }
+  }
+  moves.sort();
+  var select = ById("opening-move");
+  var i;
+  var option;
+  for (i = 0; i < moves.length; i++) {
+    option = document.createElement("option");
+    option.value = moves[i];
+    option.appendChild(document.createTextNode(moves[i].substring(0, 2) + "-" + moves[i].substring(2)));
+    select.appendChild(option);
+  }
+  select.value = DEFAULT_OPENING_MOVE;
+}
+
+function ShowSetup() {
+  StopSearch();
+  SetupOpen = true;
+  BoardTouch = null;
+  ById("game").style.display = "none";
+  ById("setup").style.display = "block";
+  UpdateSetup();
+}
+
+function StartGame() {
+  var opponentWhite = ById("game-mode").value == "test" && ById("opponent-side").value == "white";
+  GameController.BoardFlipped = opponentWhite ? BOOL.TRUE : BOOL.FALSE;
+  SetupOpen = false;
+  IgnoreClicksUntil = 0;
+  ById("setup").style.display = "none";
+  ById("game").style.display = "block";
+  LayoutBoard();
+  NewGame(opponentWhite ? ById("opening-move").value : "");
+}
+
+function NewGame(opening) {
+  StopSearch();
+  SetupOpen = false;
+  StartingHistoryPly = 0;
   ParseFen(START_FEN);
   LastFrom = SQUARES.NO_SQ;
   LastTo = SQUARES.NO_SQ;
@@ -510,15 +576,27 @@ function NewGame() {
   DrawBoard();
   CheckAndSet();
   SetStats("");
+  if (opening) {
+    var move = ParseMove(SqFromAlg(opening.substring(0, 2)), SqFromAlg(opening.substring(2, 4)));
+    if (move == NOMOVE) {
+      ShowSetup();
+      ById("setup-description").innerHTML = "Choose a legal opening move.";
+      return;
+    }
+    PlayMove(move, true);
+    StartingHistoryPly = brd_hisPly;
+    SetStats("Opening " + opening.substring(0, 2) + "-" + opening.substring(2, 4));
+  }
   if (brd_side != GameController.PlayerSide) PreSearch();
 }
 
 function UndoMove() {
+  if (SetupOpen) return;
   if (srch_thinking == BOOL.TRUE) return;
+  var available = brd_hisPly - StartingHistoryPly;
+  if (available <= 0) return;
   LastMoveWasEngine = false;
-  var take = 1;
-  if (brd_hisPly >= 2) take = 2;
-  if (brd_hisPly < take) take = brd_hisPly;
+  var take = Math.min(2, available);
   var i;
   for (i = 0; i < take; i++) {
     if (brd_hisPly > 0) TakeMove();
@@ -538,6 +616,7 @@ function UndoMove() {
 }
 
 function FlipBoard() {
+  if (SetupOpen) return;
   if (srch_thinking == BOOL.TRUE) return;
   GameController.BoardFlipped = GameController.BoardFlipped == BOOL.TRUE ? BOOL.FALSE : BOOL.TRUE;
   GameController.PlayerSide = GameController.BoardFlipped == BOOL.TRUE ? COLOURS.BLACK : COLOURS.WHITE;
@@ -547,6 +626,7 @@ function FlipBoard() {
 }
 
 function GoMove() {
+  if (SetupOpen) return;
   if (srch_thinking == BOOL.TRUE) return;
   if (GameController.GameOver == BOOL.TRUE) return;
   GameController.PlayerSide = brd_side ^ 1;
@@ -566,6 +646,8 @@ function InitGui() {
     version.innerHTML = GUI_SCRIPT_VERSION.split("-")[0];
     version.title = GUI_SCRIPT_VERSION;
   }
+  ById("setup-version").innerHTML = GUI_SCRIPT_VERSION.split("-")[0];
+  ById("setup-version").title = GUI_SCRIPT_VERSION;
   LayoutBoard();
   var boardEl = ById("board");
   Bind(boardEl, "click", OnBoardClick);
@@ -573,19 +655,25 @@ function InitGui() {
   Bind(boardEl, "touchmove", OnBoardTouchMove);
   Bind(boardEl, "touchend", OnBoardTouchEnd);
   Bind(boardEl, "touchcancel", OnBoardTouchCancel);
-  Bind(ById("new"), "click", NewGame);
+  Bind(ById("new"), "click", ShowSetup);
+  Bind(ById("game-mode"), "change", UpdateSetup);
+  Bind(ById("opponent-side"), "change", UpdateSetup);
+  Bind(ById("start-game"), "click", StartGame);
   Bind(ById("flip"), "click", FlipBoard);
   Bind(ById("undo"), "click", UndoMove);
   Bind(ById("go"), "click", GoMove);
   Bind(window, "resize", function () {
+    if (SetupOpen) return;
     LayoutBoard();
     DrawBoard();
   });
   Bind(window, "orientationchange", function () {
+    if (SetupOpen) return;
     LayoutBoard();
     DrawBoard();
   });
-  NewGame();
+  PopulateOpenings();
+  ShowSetup();
 }
 
 function InitPage() {

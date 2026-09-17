@@ -28,6 +28,59 @@ body {
   background: #fff;
 }
 
+#game,
+#test-options {
+  display: none;
+}
+
+#setup {
+  width: 88%;
+  max-width: 480px;
+  margin: 48px auto 0 auto;
+  text-align: left;
+}
+
+#setup h1 {
+  margin: 0 0 20px 0;
+  font-size: 30px;
+}
+
+#setup label {
+  display: block;
+  margin: 14px 0 6px 0;
+  font-size: 22px;
+  font-weight: bold;
+}
+
+#setup select {
+  width: 100%;
+  height: 46px;
+  font-size: 24px;
+  color: #000;
+  background: #fff;
+  border: 2px solid #000;
+}
+
+#setup-description {
+  margin: 18px 0;
+  line-height: 1.4;
+}
+
+#start-game {
+  height: 52px;
+  padding: 0 20px;
+  font-size: 28px;
+  font-weight: bold;
+  color: #000;
+  background: #fff;
+  border: 2px solid #000;
+}
+
+#setup-version {
+  margin-left: 12px;
+  font-size: 15px;
+}
+
 .square {
   position: absolute;
   overflow: hidden;
