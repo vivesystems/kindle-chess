@@ -62,16 +62,13 @@ body {
 }
 
 #status-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
+  position: relative;
+  padding-right: 130px;
   margin: 4px 0;
 }
 
 #status-info {
-  flex: 1 1 auto;
-  min-width: 0;
+  text-align: left;
 }
 
 #status {
@@ -98,8 +95,8 @@ body {
   height: 52px;
   margin: 1%;
   float: left;
-  padding: 0 4px;
-  font-size: 22px;
+  padding: 0 2px;
+  font-size: 24px;
   font-weight: bold;
   color: #000;
   background: #fff;
@@ -107,9 +104,9 @@ body {
 }
 
 #time-row {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
+  position: absolute;
+  top: 5px;
+  right: 0;
   font-size: 18px;
   white-space: nowrap;
 }
@@ -119,6 +116,7 @@ body {
   height: 40px;
   min-width: 72px;
   margin-left: 6px;
+  vertical-align: middle;
   border: 2px solid #000;
   background: #fff;
   color: #000;
