@@ -1,4 +1,7 @@
-var GUI_SCRIPT_VERSION = "v1.1.0-202609171913";
+var GUI_SCRIPT_VERSION = "v1.2.0-202609171923";
+var LAYOUT_EDGE_SPACE = 8;
+var LAYOUT_PANEL_SPACE = 150;
+var MAX_SQUARE_SIZE = 120;
 var TOUCH_MOVE_TOLERANCE = 12;
 var TOUCH_CLICK_DELAY = 700;
 var SQ_SIZE = 72;
@@ -78,12 +81,11 @@ function CheckAndSet() {
 function LayoutBoard() {
   var w = document.documentElement.clientWidth || 600;
   var h = document.documentElement.clientHeight || 800;
-  var panel = 150;
-  SQ_SIZE = Math.floor((w - 8) / 8);
-  var maxSq = Math.floor((h - panel) / 8);
-  if (maxSq > 0 && maxSq < SQ_SIZE) SQ_SIZE = maxSq;
-  if (SQ_SIZE > 120) SQ_SIZE = 120;
-  if (SQ_SIZE < 36) SQ_SIZE = 36;
+  if (window.innerWidth > 0 && window.innerWidth < w) w = window.innerWidth;
+  if (window.innerHeight > 0 && window.innerHeight < h) h = window.innerHeight;
+  SQ_SIZE = Math.max(1, Math.min(MAX_SQUARE_SIZE,
+    Math.floor((w - LAYOUT_EDGE_SPACE) / 8),
+    Math.floor((h - LAYOUT_PANEL_SPACE) / 8)));
   var panelEl = ById("panel");
   if (panelEl) panelEl.style.width = SQ_SIZE * 8 + 4 + "px";
 }
@@ -421,6 +423,11 @@ function Bind(el, ev, fn) {
 }
 
 function InitGui() {
+  var version = ById("version");
+  if (version) {
+    version.innerHTML = GUI_SCRIPT_VERSION.split("-")[0];
+    version.title = GUI_SCRIPT_VERSION;
+  }
   LayoutBoard();
   var boardEl = ById("board");
   Bind(boardEl, "click", OnBoardClick);
