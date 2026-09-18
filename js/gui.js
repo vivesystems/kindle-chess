@@ -1,4 +1,4 @@
-var GUI_SCRIPT_VERSION = "v1.9.0-202609172030";
+var GUI_SCRIPT_VERSION = "v1.10.0-202609172040";
 var AUTO_MOVE_PAUSE_MS = 1000;
 var SEARCH_START_DELAY_MS = 160;
 var COMPACT_PANEL_WIDTH = 480;
@@ -17,6 +17,7 @@ var SQ_SIZE = 72;
 var BoardSize = 0;
 var BoardFlipped = null;
 var RenderedPieces = [];
+var PieceImages = [];
 var HighlightedSquares = [];
 var CachedMoveKey = null;
 var CachedMoveCount = 0;
@@ -46,6 +47,17 @@ function ById(id) {
 
 function PieceFileName(pce) {
   return "images/" + SideChar.charAt(PieceCol[pce]) + PceChar.charAt(pce).toUpperCase() + ".png";
+}
+
+function PreloadPieces() {
+  var pce;
+  var img;
+  PieceImages = [];
+  for (pce = PIECES.wP; pce <= PIECES.bK; pce++) {
+    img = document.createElement("img");
+    img.src = PieceFileName(pce);
+    PieceImages.push(img);
+  }
 }
 
 function SetStatus(text) {
@@ -89,6 +101,7 @@ function CheckAndSet() {
   if (result == "") {
     GameController.GameOver = BOOL.FALSE;
     if (InCheckNow() == BOOL.TRUE) SetStatus("Check. " + SideName(brd_side) + " to move");
+    else if (InputSide == brd_side) SetStatus("Enter " + SideName(brd_side) + " move");
     else SetStatus(SideName(brd_side) + " to move");
   } else {
     GameController.GameOver = BOOL.TRUE;
@@ -647,8 +660,10 @@ function InitGui() {
     version.innerHTML = GUI_SCRIPT_VERSION.split("-")[0];
     version.title = GUI_SCRIPT_VERSION;
   }
-  ById("setup-version").innerHTML = GUI_SCRIPT_VERSION.split("-")[0];
-  ById("setup-version").title = GUI_SCRIPT_VERSION;
+  var setupVersion = ById("setup-version");
+  setupVersion.innerHTML = "Version " + GUI_SCRIPT_VERSION.split("-")[0];
+  setupVersion.title = GUI_SCRIPT_VERSION;
+  PreloadPieces();
   LayoutBoard();
   var boardEl = ById("board");
   Bind(boardEl, "click", OnBoardClick);
