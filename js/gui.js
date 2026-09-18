@@ -1,5 +1,6 @@
-var GUI_SCRIPT_VERSION = "v1.10.0-202609172040";
+var GUI_SCRIPT_VERSION = "v1.10.1-202609172043";
 var AUTO_MOVE_PAUSE_MS = 1000;
+var PLAYER_FEEDBACK_DELAY_MS = 20;
 var SEARCH_START_DELAY_MS = 160;
 var COMPACT_PANEL_WIDTH = 480;
 var NARROW_PANEL_WIDTH = 360;
@@ -326,7 +327,7 @@ function Deselect() {
   SelectSquare(SQUARES.NO_SQ);
 }
 
-function PlayMove(move, engineMove) {
+function PlayMove(move, engineMove, deferCheck) {
   if (move == NOMOVE) return;
   if (MakeMove(move) == BOOL.FALSE) return;
   LastFrom = FROMSQ(move);
@@ -335,7 +336,24 @@ function PlayMove(move, engineMove) {
   UserMove.from = SQUARES.NO_SQ;
   UserMove.to = SQUARES.NO_SQ;
   DrawBoard();
+  if (deferCheck !== true) CheckAndSet();
+}
+
+function FinishPlayerMove() {
+  searchTimer = null;
+  if (srch_abort == BOOL.TRUE || SetupOpen) {
+    srch_thinking = BOOL.FALSE;
+    return;
+  }
+  srch_thinking = BOOL.FALSE;
   CheckAndSet();
+  if (GameController.GameOver != BOOL.TRUE) PreSearch();
+}
+
+function QueuePlayerMove() {
+  srch_abort = BOOL.FALSE;
+  srch_thinking = BOOL.TRUE;
+  searchTimer = setTimeout(FinishPlayerMove, PLAYER_FEEDBACK_DELAY_MS);
 }
 
 function FinishEngineMove() {
@@ -443,8 +461,8 @@ function HandleSquareClick(sq) {
     Deselect();
     return;
   }
-  PlayMove(parsed);
-  if (GameController.GameOver != BOOL.TRUE) PreSearch();
+  PlayMove(parsed, false, true);
+  QueuePlayerMove();
 }
 
 function OnBoardClick(e) {
