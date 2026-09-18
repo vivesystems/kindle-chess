@@ -44,11 +44,6 @@ body {
   font-size: 30px;
 }
 
-#setup-description {
-  margin: 18px 0;
-  line-height: 1.4;
-}
-
 .setup-choice {
   display: block;
   width: 100%;
