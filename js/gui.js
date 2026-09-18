@@ -1,4 +1,4 @@
-var GUI_SCRIPT_VERSION = "v1.8.1-202609172024";
+var GUI_SCRIPT_VERSION = "v1.9.0-202609172030";
 var AUTO_MOVE_PAUSE_MS = 1000;
 var SEARCH_START_DELAY_MS = 160;
 var COMPACT_PANEL_WIDTH = 480;
@@ -30,9 +30,8 @@ var LastMoveWasEngine = false;
 var searchTimer = null;
 var srch_abort = BOOL.FALSE;
 var SetupOpen = true;
-var StartingHistoryPly = 0;
-var ChoosingOpening = false;
 var AutoPlay = false;
+var InputSide = COLOURS.BOTH;
 
 var MirrorFiles = [FILES.FILE_H, FILES.FILE_G, FILES.FILE_F, FILES.FILE_E, FILES.FILE_D, FILES.FILE_C, FILES.FILE_B, FILES.FILE_A];
 var MirrorRanks = [RANKS.RANK_8, RANKS.RANK_7, RANKS.RANK_6, RANKS.RANK_5, RANKS.RANK_4, RANKS.RANK_3, RANKS.RANK_2, RANKS.RANK_1];
@@ -397,7 +396,7 @@ function StartSearch() {
 }
 
 function PreSearch(delay) {
-  if (SetupOpen || ChoosingOpening) return;
+  if (SetupOpen) return;
   if (GameController.GameOver == BOOL.TRUE) return;
   if (srch_thinking == BOOL.TRUE) return;
   srch_abort = BOOL.FALSE;
@@ -410,7 +409,7 @@ function HandleSquareClick(sq) {
   if (SetupOpen || AutoPlay) return;
   if (srch_thinking == BOOL.TRUE) return;
   if (GameController.GameOver == BOOL.TRUE) return;
-  if (!ChoosingOpening && GameController.PlayerSide != brd_side) return;
+  if (GameController.PlayerSide != brd_side) return;
   var pce = brd_pieces[sq];
   if (UserMove.from == SQUARES.NO_SQ) {
     if (pce != PIECES.EMPTY && PieceCol[pce] == brd_side) {
@@ -429,13 +428,6 @@ function HandleSquareClick(sq) {
   var parsed = MoveHints(UserMove.from)[sq] || NOMOVE;
   if (parsed == NOMOVE) {
     Deselect();
-    return;
-  }
-  if (ChoosingOpening) {
-    PlayMove(parsed, true);
-    SetOpeningChoice(false);
-    StartingHistoryPly = brd_hisPly;
-    SetStats("Your turn as Black");
     return;
   }
   PlayMove(parsed);
@@ -523,23 +515,23 @@ function StopSearch() {
   srch_stop = BOOL.TRUE;
 }
 
-function SetOpeningChoice(active) {
-  ChoosingOpening = active;
-  ById("flip").disabled = active || AutoPlay;
-  ById("undo").disabled = active || AutoPlay;
-  ById("go").disabled = active || AutoPlay;
-  ById("auto").disabled = active;
+function UpdateControlState() {
+  var testMode = InputSide != COLOURS.BOTH;
+  ById("flip").disabled = AutoPlay;
+  ById("undo").disabled = AutoPlay;
+  ById("go").disabled = AutoPlay || testMode;
+  ById("auto").disabled = testMode;
 }
 
 function SetAutoPlay(active) {
   AutoPlay = active;
   ById("auto").innerHTML = active ? "Stop" : "Auto";
   ById("auto").setAttribute("aria-pressed", active ? "true" : "false");
-  SetOpeningChoice(ChoosingOpening);
+  UpdateControlState();
 }
 
 function ToggleAutoPlay() {
-  if (SetupOpen || ChoosingOpening) return;
+  if (SetupOpen || InputSide != COLOURS.BOTH) return;
   if (AutoPlay) {
     StopSearch();
     SetAutoPlay(false);
@@ -555,8 +547,8 @@ function ToggleAutoPlay() {
 
 function ShowSetup() {
   StopSearch();
+  InputSide = COLOURS.BOTH;
   SetAutoPlay(false);
-  SetOpeningChoice(false);
   SetupOpen = true;
   BoardTouch = null;
   ById("game").style.display = "none";
@@ -565,44 +557,41 @@ function ShowSetup() {
 
 function StartGame(mode) {
   var opponentWhite = mode == "test-white";
+  var opponentBlack = mode == "test-black";
+  var inputSide = opponentWhite ? COLOURS.WHITE : opponentBlack ? COLOURS.BLACK : COLOURS.BOTH;
   GameController.BoardFlipped = opponentWhite ? BOOL.TRUE : BOOL.FALSE;
   SetupOpen = false;
   IgnoreClicksUntil = 0;
   ById("setup").style.display = "none";
   ById("game").style.display = "block";
   LayoutBoard();
-  NewGame(opponentWhite);
+  NewGame(inputSide);
 }
 
-function NewGame(chooseOpening) {
+function NewGame(inputSide) {
+  InputSide = inputSide === COLOURS.WHITE || inputSide === COLOURS.BLACK ? inputSide : COLOURS.BOTH;
   StopSearch();
   SetAutoPlay(false);
-  SetOpeningChoice(chooseOpening === true);
   SetupOpen = false;
-  StartingHistoryPly = 0;
   ParseFen(START_FEN);
   LastFrom = SQUARES.NO_SQ;
   LastTo = SQUARES.NO_SQ;
   LastMoveWasEngine = false;
   UserMove.from = SQUARES.NO_SQ;
   UserMove.to = SQUARES.NO_SQ;
-  GameController.PlayerSide = GameController.BoardFlipped == BOOL.TRUE ? COLOURS.BLACK : COLOURS.WHITE;
+  GameController.PlayerSide = InputSide == COLOURS.BOTH ? COLOURS.WHITE : InputSide;
   GameController.GameOver = BOOL.FALSE;
   DrawBoard();
   CheckAndSet();
   SetStats("");
-  if (ChoosingOpening) {
-    SetStatus("Choose White's first move");
-    SetStats("Tap a White piece, then its destination.");
-    return;
-  }
   if (brd_side != GameController.PlayerSide) PreSearch();
 }
 
 function UndoMove() {
-  if (SetupOpen || ChoosingOpening || AutoPlay) return;
+  if (SetupOpen || AutoPlay) return;
   if (srch_thinking == BOOL.TRUE) return;
-  var available = brd_hisPly - StartingHistoryPly;
+  var retained = InputSide == COLOURS.BLACK ? 1 : 0;
+  var available = brd_hisPly - retained;
   if (available <= 0) return;
   LastMoveWasEngine = false;
   var take = Math.min(2, available);
@@ -625,17 +614,20 @@ function UndoMove() {
 }
 
 function FlipBoard() {
-  if (SetupOpen || ChoosingOpening || AutoPlay) return;
+  if (SetupOpen || AutoPlay) return;
   if (srch_thinking == BOOL.TRUE) return;
   GameController.BoardFlipped = GameController.BoardFlipped == BOOL.TRUE ? BOOL.FALSE : BOOL.TRUE;
-  GameController.PlayerSide = GameController.BoardFlipped == BOOL.TRUE ? COLOURS.BLACK : COLOURS.WHITE;
+  if (InputSide == COLOURS.BOTH) {
+    GameController.PlayerSide = GameController.BoardFlipped == BOOL.TRUE ? COLOURS.BLACK : COLOURS.WHITE;
+  }
   DrawBoard();
   CheckAndSet();
   if (GameController.GameOver != BOOL.TRUE && brd_side != GameController.PlayerSide) PreSearch();
 }
 
 function GoMove() {
-  if (SetupOpen || ChoosingOpening || AutoPlay) return;
+  if (SetupOpen || AutoPlay) return;
+  if (InputSide != COLOURS.BOTH) return;
   if (srch_thinking == BOOL.TRUE) return;
   if (GameController.GameOver == BOOL.TRUE) return;
   GameController.PlayerSide = brd_side ^ 1;
