@@ -1,4 +1,8 @@
-var GUI_SCRIPT_VERSION = "v1.6.0-202609172003";
+var GUI_SCRIPT_VERSION = "v1.7.0-202609172007";
+var AUTO_MOVE_PAUSE_MS = 1000;
+var SEARCH_START_DELAY_MS = 40;
+var COMPACT_PANEL_WIDTH = 480;
+var NARROW_PANEL_WIDTH = 360;
 var ARROW_LINE_RATIO = 0.06;
 var ARROW_OUTLINE_RATIO = 0.04;
 var ARROW_HEAD_RATIO = 0.22;
@@ -28,6 +32,7 @@ var srch_abort = BOOL.FALSE;
 var SetupOpen = true;
 var StartingHistoryPly = 0;
 var ChoosingOpening = false;
+var AutoPlay = false;
 
 var MirrorFiles = [FILES.FILE_H, FILES.FILE_G, FILES.FILE_F, FILES.FILE_E, FILES.FILE_D, FILES.FILE_C, FILES.FILE_B, FILES.FILE_A];
 var MirrorRanks = [RANKS.RANK_8, RANKS.RANK_7, RANKS.RANK_6, RANKS.RANK_5, RANKS.RANK_4, RANKS.RANK_3, RANKS.RANK_2, RANKS.RANK_1];
@@ -104,6 +109,9 @@ function LayoutBoard() {
   if (boardEl) boardEl.style.marginTop = LAYOUT_TOP_SPACE + "px";
   var panelEl = ById("panel");
   if (panelEl) panelEl.style.width = SQ_SIZE * 8 + 4 + "px";
+  var controls = ById("controls");
+  if (controls) controls.className = SQ_SIZE * 8 + 4 <= NARROW_PANEL_WIDTH ? "compact narrow" :
+    SQ_SIZE * 8 + 4 <= COMPACT_PANEL_WIDTH ? "compact" : "";
 }
 
 function DrawBoard() {
@@ -324,10 +332,12 @@ function FinishEngineMove() {
   if (srch_abort == BOOL.TRUE) return;
   var move = srch_best;
   if (move == NOMOVE) {
+    SetAutoPlay(false);
     CheckAndSet();
     return;
   }
   if (MoveExists(move) != BOOL.TRUE) {
+    SetAutoPlay(false);
     GameController.GameOver = BOOL.TRUE;
     SetStatus("Engine error. Press New.");
     SetStats("Illegal engine move rejected");
@@ -341,8 +351,10 @@ function FinishEngineMove() {
     SetStats(line);
   }
   PlayMove(move, true);
-  if (GameController.GameOver != BOOL.TRUE && brd_side != GameController.PlayerSide) {
-    PreSearch();
+  if (GameController.GameOver == BOOL.TRUE) {
+    SetAutoPlay(false);
+  } else if (AutoPlay || brd_side != GameController.PlayerSide) {
+    PreSearch(AutoPlay ? AUTO_MOVE_PAUSE_MS : SEARCH_START_DELAY_MS);
   }
 }
 
@@ -386,18 +398,18 @@ function StartSearch() {
   searchTimer = setTimeout(SearchStep, 1);
 }
 
-function PreSearch() {
+function PreSearch(delay) {
   if (SetupOpen || ChoosingOpening) return;
   if (GameController.GameOver == BOOL.TRUE) return;
   if (srch_thinking == BOOL.TRUE) return;
   srch_abort = BOOL.FALSE;
   srch_thinking = BOOL.TRUE;
   SetStatus("Thinking...");
-  searchTimer = setTimeout(StartSearch, 40);
+  searchTimer = setTimeout(StartSearch, delay || SEARCH_START_DELAY_MS);
 }
 
 function HandleSquareClick(sq) {
-  if (SetupOpen) return;
+  if (SetupOpen || AutoPlay) return;
   if (srch_thinking == BOOL.TRUE) return;
   if (GameController.GameOver == BOOL.TRUE) return;
   if (!ChoosingOpening && GameController.PlayerSide != brd_side) return;
@@ -515,13 +527,37 @@ function StopSearch() {
 
 function SetOpeningChoice(active) {
   ChoosingOpening = active;
-  ById("flip").disabled = active;
-  ById("undo").disabled = active;
-  ById("go").disabled = active;
+  ById("flip").disabled = active || AutoPlay;
+  ById("undo").disabled = active || AutoPlay;
+  ById("go").disabled = active || AutoPlay;
+  ById("auto").disabled = active;
+}
+
+function SetAutoPlay(active) {
+  AutoPlay = active;
+  ById("auto").innerHTML = active ? "Stop" : "Auto";
+  ById("auto").setAttribute("aria-pressed", active ? "true" : "false");
+  SetOpeningChoice(ChoosingOpening);
+}
+
+function ToggleAutoPlay() {
+  if (SetupOpen || ChoosingOpening) return;
+  if (AutoPlay) {
+    StopSearch();
+    SetAutoPlay(false);
+    GameController.PlayerSide = brd_side;
+    CheckAndSet();
+    return;
+  }
+  if (GameController.GameOver == BOOL.TRUE) return;
+  SetAutoPlay(true);
+  Deselect();
+  if (srch_thinking != BOOL.TRUE) PreSearch();
 }
 
 function ShowSetup() {
   StopSearch();
+  SetAutoPlay(false);
   SetOpeningChoice(false);
   SetupOpen = true;
   BoardTouch = null;
@@ -542,6 +578,7 @@ function StartGame(mode) {
 
 function NewGame(chooseOpening) {
   StopSearch();
+  SetAutoPlay(false);
   SetOpeningChoice(chooseOpening === true);
   SetupOpen = false;
   StartingHistoryPly = 0;
@@ -565,7 +602,7 @@ function NewGame(chooseOpening) {
 }
 
 function UndoMove() {
-  if (SetupOpen || ChoosingOpening) return;
+  if (SetupOpen || ChoosingOpening || AutoPlay) return;
   if (srch_thinking == BOOL.TRUE) return;
   var available = brd_hisPly - StartingHistoryPly;
   if (available <= 0) return;
@@ -590,7 +627,7 @@ function UndoMove() {
 }
 
 function FlipBoard() {
-  if (SetupOpen || ChoosingOpening) return;
+  if (SetupOpen || ChoosingOpening || AutoPlay) return;
   if (srch_thinking == BOOL.TRUE) return;
   GameController.BoardFlipped = GameController.BoardFlipped == BOOL.TRUE ? BOOL.FALSE : BOOL.TRUE;
   GameController.PlayerSide = GameController.BoardFlipped == BOOL.TRUE ? COLOURS.BLACK : COLOURS.WHITE;
@@ -600,7 +637,7 @@ function FlipBoard() {
 }
 
 function GoMove() {
-  if (SetupOpen || ChoosingOpening) return;
+  if (SetupOpen || ChoosingOpening || AutoPlay) return;
   if (srch_thinking == BOOL.TRUE) return;
   if (GameController.GameOver == BOOL.TRUE) return;
   GameController.PlayerSide = brd_side ^ 1;
@@ -636,6 +673,7 @@ function InitGui() {
   Bind(ById("flip"), "click", FlipBoard);
   Bind(ById("undo"), "click", UndoMove);
   Bind(ById("go"), "click", GoMove);
+  Bind(ById("auto"), "click", ToggleAutoPlay);
   Bind(window, "resize", function () {
     if (SetupOpen) return;
     LayoutBoard();
