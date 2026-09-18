@@ -1,4 +1,4 @@
-var GUI_SCRIPT_VERSION = "v1.7.0-202609172007";
+var GUI_SCRIPT_VERSION = "v1.7.1-202609172015";
 var AUTO_MOVE_PAUSE_MS = 1000;
 var SEARCH_START_DELAY_MS = 40;
 var COMPACT_PANEL_WIDTH = 480;
@@ -51,12 +51,12 @@ function PieceFileName(pce) {
 
 function SetStatus(text) {
   var el = ById("status");
-  if (el) el.innerHTML = text;
+  if (el && el.innerHTML != text) el.innerHTML = text;
 }
 
 function SetStats(text) {
   var el = ById("stats");
-  if (el) el.innerHTML = text;
+  if (el && el.innerHTML != text) el.innerHTML = text;
 }
 
 function SideName(side) {
@@ -369,8 +369,6 @@ function SearchStep() {
     return;
   }
   var done = SearchIterate();
-  var elapsed = ((Now() - srch_start) / 1000).toFixed(1);
-  SetStats("d" + srch_depthFound + " " + ScoreText(srch_score) + " n" + srch_nodes + " " + elapsed + "s");
   if (done == BOOL.TRUE) {
     FinishEngineMove();
     return;
