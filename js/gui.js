@@ -1,4 +1,5 @@
-var GUI_SCRIPT_VERSION = "v1.10.1-202609172043";
+var GUI_SCRIPT_VERSION = "v1.11.0-202609230743";
+var DEFAULT_SEARCH_SECONDS = 0.5;
 var AUTO_MOVE_PAUSE_MS = 1000;
 var PLAYER_FEEDBACK_DELAY_MS = 20;
 var SEARCH_START_DELAY_MS = 160;
@@ -413,9 +414,9 @@ function StartSearch() {
   }
   srch_depth = MAXDEPTH;
   var choice = ById("time");
-  var seconds = 2;
-  if (choice) seconds = parseInt(choice.value, 10);
-  if (!seconds) seconds = 2;
+  var seconds = DEFAULT_SEARCH_SECONDS;
+  if (choice) seconds = parseFloat(choice.value);
+  if (!(seconds > 0)) seconds = DEFAULT_SEARCH_SECONDS;
   srch_time = seconds * 1000;
   SetStatus("Thinking...");
   SetStats("");
