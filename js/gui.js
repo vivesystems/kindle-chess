@@ -1,4 +1,4 @@
-var GUI_SCRIPT_VERSION = "v1.11.1-202609231010";
+var GUI_SCRIPT_VERSION = "v1.12.0-202609280817";
 var DEFAULT_SEARCH_SECONDS = 1;
 var AUTO_MOVE_PAUSE_MS = 1000;
 var PLAYER_FEEDBACK_DELAY_MS = 20;
@@ -11,7 +11,7 @@ var ARROW_HEAD_RATIO = 0.22;
 var ARROW_TIP_OFFSET = 0.34;
 var LAYOUT_TOP_SPACE = 48;
 var LAYOUT_EDGE_SPACE = 8;
-var LAYOUT_PANEL_SPACE = 150;
+var LAYOUT_PANEL_SPACE = 200;
 var MAX_SQUARE_SIZE = 120;
 var TOUCH_MOVE_TOLERANCE = 12;
 var TOUCH_CLICK_DELAY = 700;
@@ -413,6 +413,8 @@ function StartSearch() {
     return;
   }
   srch_depth = MAXDEPTH;
+  var difficulty = ById("difficulty");
+  SetDifficulty(difficulty ? difficulty.value : DEFAULT_DIFFICULTY);
   var choice = ById("time");
   var seconds = DEFAULT_SEARCH_SECONDS;
   if (choice) seconds = parseFloat(choice.value);

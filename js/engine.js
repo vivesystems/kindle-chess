@@ -1,4 +1,4 @@
-var SCRIPT_VERSION = "v2.0.3-202609171945";
+var SCRIPT_VERSION = "v2.1.0-202609280817";
 
 var PIECES = {
   EMPTY: 0,
@@ -24,6 +24,14 @@ var SEARCH_CHECK_MASK = 255;
 var INFINITE = 30000;
 var MATE = 29000;
 var ISMATE = 28900;
+var DEFAULT_DIFFICULTY = 1000;
+var DIFFICULTY_MIN_LOSS = 15;
+var DIFFICULTY_MIN_DEPTH = 3;
+var DIFFICULTY_LEVELS = {
+  1000: { depth: 3, nodes: 8000, mistakeChance: 0.28, maxLoss: 80, bookPlies: 4 },
+  1200: { depth: 4, nodes: 24000, mistakeChance: 0.18, maxLoss: 55, bookPlies: 6 },
+  1400: { depth: 5, nodes: 72000, mistakeChance: 0.10, maxLoss: 35, bookPlies: 8 }
+};
 
 var START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -275,6 +283,13 @@ var srch_thinking = BOOL.FALSE;
 var srch_fromBook = BOOL.FALSE;
 var srch_depthFound = 0;
 var srch_iterDepth = 1;
+var srch_difficulty = null;
+var srch_profile = null;
+var srch_candidates = [];
+
+function SetDifficulty(level) {
+  srch_difficulty = DIFFICULTY_LEVELS[level] || DIFFICULTY_LEVELS[DEFAULT_DIFFICULTY];
+}
 
 function BoardToFen() {
   var fenStr = "";
@@ -1458,6 +1473,7 @@ function GetPvLine(depth) {
 
 function CheckUp() {
   if (Now() - srch_start > srch_time) srch_stop = BOOL.TRUE;
+  if (srch_profile && srch_nodes >= srch_profile.nodes) srch_stop = BOOL.TRUE;
 }
 
 function PickNextMove(moveNum) {
@@ -1502,6 +1518,8 @@ function ClearForSearch() {
   srch_fromBook = BOOL.FALSE;
   srch_depthFound = 0;
   srch_iterDepth = 1;
+  srch_profile = srch_difficulty;
+  srch_candidates = [];
 }
 
 function Quiescence(alpha, beta) {
@@ -1682,10 +1700,75 @@ function AlphaBeta(alpha, beta, depth, doNull) {
   return BestScore;
 }
 
+function SearchDifficultyRoot(depth) {
+  GenerateMoves();
+  var moves = brd_moveList.slice(brd_moveListStart[0], brd_moveListStart[1]);
+  var candidates = [];
+  var inCheck = SqAttacked(brd_pList[PCEINDEX(Kings[brd_side], 0)], brd_side ^ 1);
+  for (var index = 0; index < moves.length; index++) {
+    CheckUp();
+    if (srch_stop == BOOL.TRUE) return null;
+    var move = moves[index];
+    if (MakeMove(move) == BOOL.FALSE) continue;
+    var score = -AlphaBeta(-INFINITE, INFINITE, depth - 1 + inCheck, BOOL.TRUE);
+    TakeMove();
+    if (srch_stop == BOOL.TRUE) return null;
+    candidates.push({ move: move, score: score });
+  }
+  candidates.sort(function (a, b) { return b.score - a.score; });
+  return candidates;
+}
+
+function FinishDifficultySearch() {
+  srch_thinking = BOOL.FALSE;
+  if (srch_candidates.length < 2 || srch_depthFound < DIFFICULTY_MIN_DEPTH ||
+      Math.abs(srch_score) >= ISMATE || Math.random() >= srch_profile.mistakeChance) return BOOL.TRUE;
+  var choices = [];
+  var totalWeight = 0;
+  for (var index = 1; index < srch_candidates.length; index++) {
+    var candidate = srch_candidates[index];
+    var loss = srch_score - candidate.score;
+    if (loss < DIFFICULTY_MIN_LOSS || loss > srch_profile.maxLoss || Math.abs(candidate.score) >= ISMATE) continue;
+    var weight = srch_profile.maxLoss - loss + 1;
+    totalWeight += weight;
+    choices.push({ candidate: candidate, weight: weight });
+  }
+  var pick = Math.random() * totalWeight;
+  for (var choice = 0; choice < choices.length; choice++) {
+    pick -= choices[choice].weight;
+    if (pick < 0) {
+      srch_best = choices[choice].candidate.move;
+      srch_score = choices[choice].candidate.score;
+      break;
+    }
+  }
+  return BOOL.TRUE;
+}
+
+function SearchDifficultyIterate() {
+  if (srch_thinking != BOOL.TRUE) return BOOL.TRUE;
+  var candidates = SearchDifficultyRoot(srch_iterDepth);
+  if (candidates === null) return FinishDifficultySearch();
+  srch_candidates = candidates;
+  srch_depthFound = srch_iterDepth;
+  if (!candidates.length) {
+    srch_best = NOMOVE;
+    srch_score = SqAttacked(brd_pList[PCEINDEX(Kings[brd_side], 0)], brd_side ^ 1) ? -MATE : 0;
+    return FinishDifficultySearch();
+  }
+  srch_best = candidates[0].move;
+  srch_score = candidates[0].score;
+  if (Math.abs(srch_score) >= ISMATE || srch_iterDepth >= Math.min(srch_depth, srch_profile.depth)) {
+    return FinishDifficultySearch();
+  }
+  srch_iterDepth++;
+  return BOOL.FALSE;
+}
+
 function SearchBegin() {
   ClearForSearch();
   srch_thinking = BOOL.TRUE;
-  if (GameController.BookLoaded == BOOL.TRUE) {
+  if (GameController.BookLoaded == BOOL.TRUE && (!srch_profile || brd_hisPly < srch_profile.bookPlies)) {
     var bookMove = BookMove();
     if (bookMove != NOMOVE) {
       srch_best = bookMove;
@@ -1696,10 +1779,22 @@ function SearchBegin() {
       return BOOL.TRUE;
     }
   }
+  if (srch_profile) {
+    InitTT();
+    GenerateMoves();
+    for (var index = brd_moveListStart[0]; index < brd_moveListStart[1]; index++) {
+      var move = brd_moveList[index];
+      if (MakeMove(move) == BOOL.FALSE) continue;
+      TakeMove();
+      srch_best = move;
+      break;
+    }
+  }
   return BOOL.FALSE;
 }
 
 function SearchIterate() {
+  if (srch_profile) return SearchDifficultyIterate();
   var currentDepth = srch_iterDepth;
   var score;
   if (currentDepth <= 2) {

@@ -216,7 +216,14 @@ body {
   white-space: nowrap;
 }
 
-#time {
+#difficulty-row {
+  margin-bottom: 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+#time,
+#difficulty {
   font-size: 18px;
   height: 40px;
   min-width: 72px;
