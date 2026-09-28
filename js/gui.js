@@ -1,4 +1,4 @@
-var GUI_SCRIPT_VERSION = "v1.14.1-202609280958";
+var GUI_SCRIPT_VERSION = "v1.14.2-202609281008";
 var DEFAULT_SEARCH_SECONDS = 1;
 var AUTO_MOVE_PAUSE_MS = 1000;
 var PLAYER_FEEDBACK_DELAY_MS = 20;
@@ -89,9 +89,12 @@ function SetStatus(text) {
   if (el && el.innerHTML != text) el.innerHTML = text;
 }
 
-function SetStats(text) {
+function SetStats(text, mistake) {
   var el = ById("stats");
-  if (el && el.innerHTML != text) el.innerHTML = text;
+  if (!el) return;
+  var className = mistake === true ? "mistake" : "";
+  if (el.className != className) el.className = className;
+  if (el.innerHTML != text) el.innerHTML = text;
 }
 
 function SideName(side) {
@@ -401,7 +404,11 @@ function FinishEngineMove() {
     SetStats("Book " + PrMove(move));
   } else {
     line = "d" + srch_depthFound + " " + ScoreText(srch_score) + " n" + srch_nodes;
-    SetStats(line);
+    if (srch_wasWeakened == BOOL.TRUE) {
+      SetStats("MISTAKE " + (srch_mistakeLoss / 100).toFixed(2) + "p | " + line, true);
+    } else {
+      SetStats(line);
+    }
   }
   PlayMove(move, true);
   if (GameController.GameOver == BOOL.TRUE) {

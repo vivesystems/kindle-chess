@@ -316,6 +316,14 @@ body {
   margin: 2px 0 0 0;
 }
 
+#stats.mistake {
+  padding: 4px 6px;
+  color: #fff;
+  background: #000;
+  border: 2px solid #000;
+  font-weight: bold;
+}
+
 #controls {
   position: relative;
   overflow: hidden;
