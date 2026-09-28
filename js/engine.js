@@ -1,4 +1,4 @@
-var SCRIPT_VERSION = "v2.2.0-202609280906";
+var SCRIPT_VERSION = "v2.2.1-202609280909";
 
 var PIECES = {
   EMPTY: 0,
@@ -27,6 +27,7 @@ var ISMATE = 28900;
 var DEFAULT_DIFFICULTY = 1000;
 var DIFFICULTY_MIN_LOSS = 15;
 var DIFFICULTY_MIN_DEPTH = 3;
+var SHUFFLE_PENALTY = 25;
 var DIFFICULTY_LEVELS = {
   1000: { depth: 3, nodes: 8000, mistakeChance: 0.28, maxLoss: 80, bookPlies: 4 },
   1200: { depth: 4, nodes: 24000, mistakeChance: 0.18, maxLoss: 55, bookPlies: 6 },
@@ -1484,6 +1485,7 @@ function GetPvLine(depth) {
 }
 
 function CheckUp() {
+  if (srch_depthFound < 1) return;
   if (Now() - srch_start > srch_time) {
     srch_stop = BOOL.TRUE;
     if (srch_endReason == "") srch_endReason = "time";
@@ -1720,11 +1722,18 @@ function AlphaBeta(alpha, beta, depth, doNull) {
   return BestScore;
 }
 
+function IsShuffleMove(move, previousOwnMove) {
+  if (previousOwnMove == NOMOVE) return false;
+  if ((move & (MFLAGCAP | MFLAGPROM)) != 0 || (previousOwnMove & (MFLAGCAP | MFLAGPROM)) != 0) return false;
+  return FROMSQ(move) == TOSQ(previousOwnMove) && TOSQ(move) == FROMSQ(previousOwnMove);
+}
+
 function SearchDifficultyRoot(depth) {
   GenerateMoves();
   var moves = brd_moveList.slice(brd_moveListStart[0], brd_moveListStart[1]);
   var candidates = [];
   var inCheck = SqAttacked(brd_pList[PCEINDEX(Kings[brd_side], 0)], brd_side ^ 1);
+  var previousOwnMove = brd_hisPly >= 2 ? brd_history[brd_hisPly - 2].move : NOMOVE;
   for (var index = 0; index < moves.length; index++) {
     CheckUp();
     if (srch_stop == BOOL.TRUE) return null;
@@ -1733,6 +1742,9 @@ function SearchDifficultyRoot(depth) {
     var score = -AlphaBeta(-INFINITE, INFINITE, depth - 1 + inCheck, BOOL.TRUE);
     TakeMove();
     if (srch_stop == BOOL.TRUE) return null;
+    if (inCheck == BOOL.FALSE && Math.abs(score) < ISMATE && IsShuffleMove(move, previousOwnMove)) {
+      score -= SHUFFLE_PENALTY;
+    }
     candidates.push({ move: move, score: score });
   }
   candidates.sort(function (a, b) { return b.score - a.score; });
