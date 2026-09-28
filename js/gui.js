@@ -1,4 +1,4 @@
-var GUI_SCRIPT_VERSION = "v1.13.0-202609280906";
+var GUI_SCRIPT_VERSION = "v1.13.1-202609280913";
 var DEFAULT_SEARCH_SECONDS = 1;
 var AUTO_MOVE_PAUSE_MS = 1000;
 var PLAYER_FEEDBACK_DELAY_MS = 20;
@@ -55,6 +55,7 @@ var BenchmarkCaseIndex = 0;
 var BenchmarkSuiteStart = 0;
 var BenchmarkBookLoaded = BOOL.TRUE;
 var BenchmarkDetailPage = 0;
+var BenchmarkDetailsVisible = false;
 
 var MirrorFiles = [FILES.FILE_H, FILES.FILE_G, FILES.FILE_F, FILES.FILE_E, FILES.FILE_D, FILES.FILE_C, FILES.FILE_B, FILES.FILE_A];
 var MirrorRanks = [RANKS.RANK_8, RANKS.RANK_7, RANKS.RANK_6, RANKS.RANK_5, RANKS.RANK_4, RANKS.RANK_3, RANKS.RANK_2, RANKS.RANK_1];
@@ -675,7 +676,17 @@ function ShowBenchmark() {
     ById("benchmark-progress").innerHTML = "Ready";
     ById("benchmark-current").innerHTML = "The benchmark does not change difficulty settings.";
   }
+  BenchmarkSetCompletedView(BenchmarkResults.length > 0);
   SetBenchmarkButtons(false);
+}
+
+function BenchmarkSetCompletedView(completed) {
+  ById("benchmark").className = completed ? "complete" : "";
+  ById("benchmark-start").innerHTML = completed ? "Again" : "Start";
+  BenchmarkDetailsVisible = false;
+  ById("benchmark-details-toggle").innerHTML = "Details";
+  ById("benchmark-detail").style.display = "none";
+  ById("benchmark-pages").style.display = "none";
 }
 
 function BenchmarkStart() {
@@ -691,6 +702,7 @@ function BenchmarkStart() {
   BenchmarkBookLoaded = GameController.BookLoaded;
   GameController.BookLoaded = BOOL.FALSE;
   srch_abort = BOOL.FALSE;
+  BenchmarkSetCompletedView(false);
   ById("benchmark-summary").innerHTML = "";
   ById("benchmark-detail").innerHTML = "";
   ById("benchmark-pages").style.display = "none";
@@ -819,40 +831,57 @@ function BenchmarkFinishSuite(stopped) {
   ById("benchmark-progress").innerHTML = stopped ? "Stopped: " + BenchmarkResults.length + " of " + BenchmarkCases.length +
     " cases" : "Complete: " + BenchmarkResults.length + " cases";
   ById("benchmark-current").innerHTML = "Elapsed " + FormatBenchmarkDuration(Now() - BenchmarkSuiteStart);
+  BenchmarkSetCompletedView(true);
   BenchmarkRenderSummary();
   BenchmarkRenderDetails();
 }
 
 function BenchmarkRenderSummary() {
-  var html = "<table><tr><th>Level</th><th>Depth</th><th>N/s</th><th>Tactics</th><th>Ends T/D/N</th></tr>";
+  var html = "<div class=\"benchmark-photo-config\">" + GUI_SCRIPT_VERSION.split("-")[0] + " / engine " +
+    SCRIPT_VERSION.split("-")[0] + " &middot; " + BenchmarkResults.length + "/" + BenchmarkCases.length + " cases &middot; " +
+    FormatBenchmarkDuration(Now() - BenchmarkSuiteStart) + "<br />5 positions &middot; seed " + BENCHMARK_SEED +
+    " &middot; book off &middot; reset per case</div>" +
+    "<table><tr><th>Elo</th><th>s</th><th>d</th><th>N/s</th><th>End</th><th>W</th><th>Tac</th></tr>";
   for (var levelIndex = 0; levelIndex < BENCHMARK_LEVELS.length; levelIndex++) {
     var level = BENCHMARK_LEVELS[levelIndex];
-    var count = 0;
-    var depth = 0;
-    var nodes = 0;
-    var elapsed = 0;
-    var tacticalPass = 0;
-    var tacticalTotal = 0;
-    var endings = { time: 0, depth: 0, nodes: 0 };
-    for (var resultIndex = 0; resultIndex < BenchmarkResults.length; resultIndex++) {
-      var result = BenchmarkResults[resultIndex];
-      if (result.level != level) continue;
-      count++;
-      depth += result.depth;
-      nodes += result.nodes;
-      elapsed += result.elapsed;
-      if (result.tactical !== null) {
-        tacticalTotal++;
-        if (result.tactical) tacticalPass++;
+    for (var timeIndex = 0; timeIndex < BENCHMARK_TIMES.length; timeIndex++) {
+      var seconds = BENCHMARK_TIMES[timeIndex];
+      var count = 0;
+      var depth = 0;
+      var nodes = 0;
+      var elapsed = 0;
+      var weaker = 0;
+      var tacticalPass = 0;
+      var tacticalTotal = 0;
+      var endings = { time: 0, depth: 0, nodes: 0 };
+      for (var resultIndex = 0; resultIndex < BenchmarkResults.length; resultIndex++) {
+        var result = BenchmarkResults[resultIndex];
+        if (result.level != level || result.seconds != seconds) continue;
+        count++;
+        depth += result.depth;
+        nodes += result.nodes;
+        elapsed += result.elapsed;
+        if (result.move != result.bestMove) weaker++;
+        if (result.tactical !== null) {
+          tacticalTotal++;
+          if (result.tactical) tacticalPass++;
+        }
+        if (endings[result.reason] !== undefined) endings[result.reason]++;
       }
-      if (endings[result.reason] !== undefined) endings[result.reason]++;
+      html += "<tr><td>" + level + "</td><td>" + seconds + "</td><td>" + (count ? (depth / count).toFixed(1) : "-") +
+        "</td><td>" + FormatBenchmarkRate(elapsed ? Math.round(nodes * 1000 / elapsed) : 0) + "</td><td>" +
+        endings.time + "/" + endings.depth + "/" + endings.nodes + "</td><td>" + weaker + "</td><td>" +
+        tacticalPass + "/" + tacticalTotal + "</td></tr>";
     }
-    html += "<tr><td>" + level + "</td><td>" + (count ? (depth / count).toFixed(1) : "-") + "</td><td>" +
-      (elapsed ? Math.round(nodes * 1000 / elapsed) : 0) + "</td><td>" + tacticalPass + "/" + tacticalTotal +
-      "</td><td>" + endings.time + "/" + endings.depth + "/" + endings.nodes + "</td></tr>";
   }
-  html += "</table><div class=\"benchmark-note\">T/D/N = time/depth/node budget. This measures device search speed, reached depth, budget limits, chosen versus best-evaluated moves, and two basic tactics. It does not establish Elo or broad playing strength; the presets remain uncalibrated.</div>";
+  html += "</table><div class=\"benchmark-note\">End = time/depth/node counts. W = weaker moves played. Tac = passed/2. Send this screen; details are optional.</div>";
   ById("benchmark-summary").innerHTML = html;
+}
+
+function FormatBenchmarkRate(nodesPerSecond) {
+  if (nodesPerSecond >= 10000) return Math.round(nodesPerSecond / 1000) + "k";
+  if (nodesPerSecond >= 1000) return (nodesPerSecond / 1000).toFixed(1) + "k";
+  return nodesPerSecond;
 }
 
 function BenchmarkRenderDetails() {
@@ -871,10 +900,18 @@ function BenchmarkRenderDetails() {
       " &middot; played " + PrMove(result.move) + " " + ScoreText(result.score) + "</div>";
   }
   ById("benchmark-detail").innerHTML = html;
-  ById("benchmark-pages").style.display = BenchmarkResults.length ? "block" : "none";
+  ById("benchmark-detail").style.display = BenchmarkDetailsVisible ? "block" : "none";
+  ById("benchmark-pages").style.display = BenchmarkDetailsVisible && BenchmarkResults.length ? "block" : "none";
   ById("benchmark-page").innerHTML = "Page " + (BenchmarkDetailPage + 1) + "/" + pageCount;
   ById("benchmark-prev").disabled = BenchmarkDetailPage == 0;
   ById("benchmark-next").disabled = BenchmarkDetailPage >= pageCount - 1;
+}
+
+function BenchmarkToggleDetails() {
+  if (!BenchmarkResults.length) return;
+  BenchmarkDetailsVisible = !BenchmarkDetailsVisible;
+  ById("benchmark-details-toggle").innerHTML = BenchmarkDetailsVisible ? "Summary" : "Details";
+  BenchmarkRenderDetails();
 }
 
 function BenchmarkPreviousPage() {
@@ -999,6 +1036,7 @@ function InitGui() {
   Bind(ById("benchmark-menu"), "click", ShowBenchmark);
   Bind(ById("benchmark-start"), "click", BenchmarkStart);
   Bind(ById("benchmark-stop"), "click", BenchmarkStop);
+  Bind(ById("benchmark-details-toggle"), "click", BenchmarkToggleDetails);
   Bind(ById("benchmark-back"), "click", ShowSetup);
   Bind(ById("benchmark-prev"), "click", BenchmarkPreviousPage);
   Bind(ById("benchmark-next"), "click", BenchmarkNextPage);
