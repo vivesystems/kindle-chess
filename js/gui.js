@@ -1,4 +1,4 @@
-var GUI_SCRIPT_VERSION = "v1.14.0-202609280947";
+var GUI_SCRIPT_VERSION = "v1.14.1-202609280958";
 var DEFAULT_SEARCH_SECONDS = 1;
 var AUTO_MOVE_PAUSE_MS = 1000;
 var PLAYER_FEEDBACK_DELAY_MS = 20;
@@ -892,7 +892,7 @@ function BenchmarkRenderSummary() {
     }
   }
   html += "</table>" + BenchmarkWeakeningSummary() +
-    "<div class=\"benchmark-note\">End = time/depth/node. E2/E3 = eligible positions. S2 = depth-2 options still safe at depth 3. R/W = triggered rolls/weaker moves at 1s. Loss = average pawns. Send this screen.</div>";
+    "<div class=\"benchmark-note\">End = time/depth/node. G = weakening depth gate. E2/E3 = eligible positions. S2 = depth-2 options still safe at depth 3. R/W = triggered rolls/weaker moves at 1s. Loss = average pawns. Send this screen.</div>";
   ById("benchmark-summary").innerHTML = html;
 }
 
@@ -936,7 +936,7 @@ function BenchmarkDepthCandidates(level, position, depth) {
 
 function BenchmarkWeakeningSummary() {
   var html = "<div class=\"benchmark-subtitle\">Weakening evidence</div>" +
-    "<table><tr><th>Elo</th><th>E2</th><th>E3</th><th>S2</th><th>R/W</th><th>Loss</th></tr>";
+    "<table><tr><th>Elo</th><th>G</th><th>E2</th><th>E3</th><th>S2</th><th>R/W</th><th>Loss</th></tr>";
   for (var levelIndex = 0; levelIndex < BENCHMARK_LEVELS.length; levelIndex++) {
     var level = BENCHMARK_LEVELS[levelIndex];
     var profile = DIFFICULTY_LEVELS[level];
@@ -978,8 +978,9 @@ function BenchmarkWeakeningSummary() {
         loss += result.mistakeLoss;
       }
     }
-    html += "<tr><td>" + level + "</td><td>" + eligible2 + "/" + assessed2 + "</td><td>" + eligible3 + "/" +
-      assessed3 + "</td><td>" + stable + "/" + stableAssessed + "</td><td>" + rolls + "/" + weakened +
+    html += "<tr><td>" + level + "</td><td>" + profile.mistakeDepth + "</td><td>" + eligible2 + "/" + assessed2 +
+      "</td><td>" + eligible3 + "/" + assessed3 + "</td><td>" + stable + "/" + stableAssessed +
+      "</td><td>" + rolls + "/" + weakened +
       "</td><td>" + (weakened ? (loss / weakened / 100).toFixed(2) : "-") + "</td></tr>";
   }
   return html + "</table>";

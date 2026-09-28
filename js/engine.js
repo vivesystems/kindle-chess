@@ -1,4 +1,4 @@
-var SCRIPT_VERSION = "v2.3.0-202609280947";
+var SCRIPT_VERSION = "v2.4.0-202609280958";
 
 var PIECES = {
   EMPTY: 0,
@@ -26,12 +26,11 @@ var MATE = 29000;
 var ISMATE = 28900;
 var DEFAULT_DIFFICULTY = 1000;
 var DIFFICULTY_MIN_LOSS = 15;
-var DIFFICULTY_MIN_DEPTH = 3;
 var SHUFFLE_PENALTY = 25;
 var DIFFICULTY_LEVELS = {
-  1000: { depth: 3, nodes: 8000, mistakeChance: 0.28, maxLoss: 80, bookPlies: 4 },
-  1200: { depth: 4, nodes: 24000, mistakeChance: 0.18, maxLoss: 55, bookPlies: 6 },
-  1400: { depth: 5, nodes: 72000, mistakeChance: 0.10, maxLoss: 35, bookPlies: 8 }
+  1000: { depth: 3, nodes: 8000, mistakeDepth: 2, mistakeChance: 0.28, maxLoss: 80, bookPlies: 4 },
+  1200: { depth: 4, nodes: 24000, mistakeDepth: 2, mistakeChance: 0.18, maxLoss: 55, bookPlies: 6 },
+  1400: { depth: 5, nodes: 72000, mistakeDepth: 3, mistakeChance: 0.10, maxLoss: 35, bookPlies: 8 }
 };
 
 var START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -1778,7 +1777,7 @@ function DifficultyChoices(candidates, bestScore, maxLoss) {
 
 function FinishDifficultySearch() {
   srch_thinking = BOOL.FALSE;
-  if (srch_candidates.length < 2 || srch_depthFound < DIFFICULTY_MIN_DEPTH || Math.abs(srch_score) >= ISMATE) {
+  if (srch_candidates.length < 2 || srch_depthFound < srch_profile.mistakeDepth || Math.abs(srch_score) >= ISMATE) {
     return BOOL.TRUE;
   }
   srch_mistakeRoll = SearchRandom();
