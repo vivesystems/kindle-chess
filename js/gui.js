@@ -1,4 +1,4 @@
-var GUI_SCRIPT_VERSION = "v1.13.1-202609280913";
+var GUI_SCRIPT_VERSION = "v1.14.0-202609280947";
 var DEFAULT_SEARCH_SECONDS = 1;
 var AUTO_MOVE_PAUSE_MS = 1000;
 var PLAYER_FEEDBACK_DELAY_MS = 20;
@@ -16,6 +16,7 @@ var MAX_SQUARE_SIZE = 120;
 var TOUCH_MOVE_TOLERANCE = 12;
 var TOUCH_CLICK_DELAY = 700;
 var BENCHMARK_SEED = 20260928;
+var BENCHMARK_RANDOM_STRIDE = 3;
 var BENCHMARK_CASE_DELAY_MS = 25;
 var BENCHMARK_DETAIL_PAGE_SIZE = 4;
 var BENCHMARK_LEVELS = [1000, 1200, 1400];
@@ -645,7 +646,10 @@ function BuildBenchmarkCases() {
 }
 
 function CreateBenchmarkRandom(caseIndex) {
-  var state = (BENCHMARK_SEED + caseIndex * 2654435761) >>> 0;
+  var state = BENCHMARK_SEED >>> 0;
+  for (var index = 0; index < caseIndex * BENCHMARK_RANDOM_STRIDE; index++) {
+    state = (state * 1664525 + 1013904223) >>> 0;
+  }
   return function () {
     state = (state * 1664525 + 1013904223) >>> 0;
     return state / 4294967296;
@@ -808,8 +812,23 @@ function BenchmarkRecordCase() {
     bestMove: srch_bestEvaluated,
     bestScore: srch_bestEvaluatedScore,
     reason: reason,
-    tactical: BenchmarkTacticalPass(testCase.position, srch_best)
+    tactical: BenchmarkTacticalPass(testCase.position, srch_best),
+    depth2: CopyBenchmarkCandidates(srch_candidatesByDepth[2]),
+    depth3: CopyBenchmarkCandidates(srch_candidatesByDepth[3]),
+    mistakeRoll: srch_mistakeRoll,
+    mistakeOptions: srch_mistakeOptions,
+    mistakeLoss: srch_mistakeLoss,
+    weakened: srch_wasWeakened == BOOL.TRUE
   });
+}
+
+function CopyBenchmarkCandidates(candidates) {
+  var copy = [];
+  if (!candidates) return copy;
+  for (var index = 0; index < candidates.length; index++) {
+    copy.push({ move: candidates[index].move, score: candidates[index].score });
+  }
+  return copy;
 }
 
 function BenchmarkStop() {
@@ -841,7 +860,7 @@ function BenchmarkRenderSummary() {
     SCRIPT_VERSION.split("-")[0] + " &middot; " + BenchmarkResults.length + "/" + BenchmarkCases.length + " cases &middot; " +
     FormatBenchmarkDuration(Now() - BenchmarkSuiteStart) + "<br />5 positions &middot; seed " + BENCHMARK_SEED +
     " &middot; book off &middot; reset per case</div>" +
-    "<table><tr><th>Elo</th><th>s</th><th>d</th><th>N/s</th><th>End</th><th>W</th><th>Tac</th></tr>";
+    "<table><tr><th>Elo</th><th>s</th><th>d</th><th>N/s</th><th>End</th><th>Tac</th></tr>";
   for (var levelIndex = 0; levelIndex < BENCHMARK_LEVELS.length; levelIndex++) {
     var level = BENCHMARK_LEVELS[levelIndex];
     for (var timeIndex = 0; timeIndex < BENCHMARK_TIMES.length; timeIndex++) {
@@ -850,7 +869,6 @@ function BenchmarkRenderSummary() {
       var depth = 0;
       var nodes = 0;
       var elapsed = 0;
-      var weaker = 0;
       var tacticalPass = 0;
       var tacticalTotal = 0;
       var endings = { time: 0, depth: 0, nodes: 0 };
@@ -861,7 +879,6 @@ function BenchmarkRenderSummary() {
         depth += result.depth;
         nodes += result.nodes;
         elapsed += result.elapsed;
-        if (result.move != result.bestMove) weaker++;
         if (result.tactical !== null) {
           tacticalTotal++;
           if (result.tactical) tacticalPass++;
@@ -870,12 +887,102 @@ function BenchmarkRenderSummary() {
       }
       html += "<tr><td>" + level + "</td><td>" + seconds + "</td><td>" + (count ? (depth / count).toFixed(1) : "-") +
         "</td><td>" + FormatBenchmarkRate(elapsed ? Math.round(nodes * 1000 / elapsed) : 0) + "</td><td>" +
-        endings.time + "/" + endings.depth + "/" + endings.nodes + "</td><td>" + weaker + "</td><td>" +
-        tacticalPass + "/" + tacticalTotal + "</td></tr>";
+        endings.time + "/" + endings.depth + "/" + endings.nodes + "</td><td>" + tacticalPass + "/" +
+        tacticalTotal + "</td></tr>";
     }
   }
-  html += "</table><div class=\"benchmark-note\">End = time/depth/node counts. W = weaker moves played. Tac = passed/2. Send this screen; details are optional.</div>";
+  html += "</table>" + BenchmarkWeakeningSummary() +
+    "<div class=\"benchmark-note\">End = time/depth/node. E2/E3 = eligible positions. S2 = depth-2 options still safe at depth 3. R/W = triggered rolls/weaker moves at 1s. Loss = average pawns. Send this screen.</div>";
   ById("benchmark-summary").innerHTML = html;
+}
+
+function BenchmarkEligibleMoves(candidates, maxLoss) {
+  var moves = [];
+  if (!candidates || candidates.length < 2 || Math.abs(candidates[0].score) >= ISMATE) return moves;
+  var choiceSet = DifficultyChoices(candidates, candidates[0].score, maxLoss);
+  for (var index = 0; index < choiceSet.choices.length; index++) {
+    moves.push(choiceSet.choices[index].candidate.move);
+  }
+  return moves;
+}
+
+function BenchmarkDepthAssessable(candidates) {
+  return candidates && candidates.length > 1 && Math.abs(candidates[0].score) < ISMATE;
+}
+
+function BenchmarkStableOptions(depth2, depth3, maxLoss) {
+  var depth2Moves = BenchmarkEligibleMoves(depth2, maxLoss);
+  if (!depth2Moves.length || !BenchmarkDepthAssessable(depth3)) return null;
+  var depth3Best = depth3[0].score;
+  for (var moveIndex = 0; moveIndex < depth2Moves.length; moveIndex++) {
+    for (var candidateIndex = 0; candidateIndex < depth3.length; candidateIndex++) {
+      var candidate = depth3[candidateIndex];
+      var loss = depth3Best - candidate.score;
+      if (candidate.move == depth2Moves[moveIndex] && loss >= 0 && loss <= maxLoss &&
+          Math.abs(candidate.score) < ISMATE) return true;
+    }
+  }
+  return false;
+}
+
+function BenchmarkDepthCandidates(level, position, depth) {
+  var property = depth == 2 ? "depth2" : "depth3";
+  for (var resultIndex = BenchmarkResults.length - 1; resultIndex >= 0; resultIndex--) {
+    var result = BenchmarkResults[resultIndex];
+    if (result.level == level && result.position == position && result[property].length) return result[property];
+  }
+  return [];
+}
+
+function BenchmarkWeakeningSummary() {
+  var html = "<div class=\"benchmark-subtitle\">Weakening evidence</div>" +
+    "<table><tr><th>Elo</th><th>E2</th><th>E3</th><th>S2</th><th>R/W</th><th>Loss</th></tr>";
+  for (var levelIndex = 0; levelIndex < BENCHMARK_LEVELS.length; levelIndex++) {
+    var level = BENCHMARK_LEVELS[levelIndex];
+    var profile = DIFFICULTY_LEVELS[level];
+    var eligible2 = 0;
+    var assessed2 = 0;
+    var eligible3 = 0;
+    var assessed3 = 0;
+    var stable = 0;
+    var stableAssessed = 0;
+    var rolls = 0;
+    var weakened = 0;
+    var loss = 0;
+    for (var positionIndex = 0; positionIndex < BENCHMARK_POSITIONS.length; positionIndex++) {
+      var position = BENCHMARK_POSITIONS[positionIndex].name;
+      var depth2 = BenchmarkDepthCandidates(level, position, 2);
+      var depth3 = BenchmarkDepthCandidates(level, position, 3);
+      var options2 = BenchmarkEligibleMoves(depth2, profile.maxLoss);
+      var options3 = BenchmarkEligibleMoves(depth3, profile.maxLoss);
+      if (BenchmarkDepthAssessable(depth2)) {
+        assessed2++;
+        if (options2.length) eligible2++;
+      }
+      if (BenchmarkDepthAssessable(depth3)) {
+        assessed3++;
+        if (options3.length) eligible3++;
+      }
+      var stableResult = BenchmarkStableOptions(depth2, depth3, profile.maxLoss);
+      if (stableResult !== null) {
+        stableAssessed++;
+        if (stableResult) stable++;
+      }
+    }
+    for (var resultIndex = 0; resultIndex < BenchmarkResults.length; resultIndex++) {
+      var result = BenchmarkResults[resultIndex];
+      if (result.level != level || result.seconds != 1) continue;
+      if (result.mistakeRoll >= 0 && result.mistakeRoll < profile.mistakeChance) rolls++;
+      if (result.weakened) {
+        weakened++;
+        loss += result.mistakeLoss;
+      }
+    }
+    html += "<tr><td>" + level + "</td><td>" + eligible2 + "/" + assessed2 + "</td><td>" + eligible3 + "/" +
+      assessed3 + "</td><td>" + stable + "/" + stableAssessed + "</td><td>" + rolls + "/" + weakened +
+      "</td><td>" + (weakened ? (loss / weakened / 100).toFixed(2) : "-") + "</td></tr>";
+  }
+  return html + "</table>";
 }
 
 function FormatBenchmarkRate(nodesPerSecond) {
@@ -893,11 +1000,16 @@ function BenchmarkRenderDetails() {
   for (var index = first; index < last; index++) {
     var result = BenchmarkResults[index];
     var tactical = result.tactical === null ? "" : result.tactical ? " &middot; tactic PASS" : " &middot; tactic FAIL";
+    var options2 = BenchmarkEligibleMoves(result.depth2, DIFFICULTY_LEVELS[result.level].maxLoss).length;
+    var options3 = BenchmarkEligibleMoves(result.depth3, DIFFICULTY_LEVELS[result.level].maxLoss).length;
+    var roll = result.mistakeRoll < 0 ? "-" : result.mistakeRoll.toFixed(2);
     html += "<div class=\"benchmark-result\"><div class=\"benchmark-result-title\">" + (index + 1) + ". " + result.position +
       " &middot; " + result.level + " &middot; " + result.seconds + "s</div>" + (result.elapsed / 1000).toFixed(2) +
       "s &middot; d" + result.depth + " &middot; " + result.nodes + " nodes &middot; " + result.nps + " n/s &middot; " +
       result.reason + tactical + "<br />Best " + PrMove(result.bestMove) + " " + ScoreText(result.bestScore) +
-      " &middot; played " + PrMove(result.move) + " " + ScoreText(result.score) + "</div>";
+      " &middot; played " + PrMove(result.move) + " " + ScoreText(result.score) + "<br />E2 " + options2 +
+      " &middot; E3 " + options3 + " &middot; roll " + roll + " &middot; final options " + result.mistakeOptions + " &middot; loss " +
+      (result.weakened ? (result.mistakeLoss / 100).toFixed(2) : "-") + "</div>";
   }
   ById("benchmark-detail").innerHTML = html;
   ById("benchmark-detail").style.display = BenchmarkDetailsVisible ? "block" : "none";

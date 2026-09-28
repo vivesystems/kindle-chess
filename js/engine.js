@@ -1,4 +1,4 @@
-var SCRIPT_VERSION = "v2.2.1-202609280909";
+var SCRIPT_VERSION = "v2.3.0-202609280947";
 
 var PIECES = {
   EMPTY: 0,
@@ -287,10 +287,15 @@ var srch_iterDepth = 1;
 var srch_difficulty = null;
 var srch_profile = null;
 var srch_candidates = [];
+var srch_candidatesByDepth = [];
 var srch_bestEvaluated = NOMOVE;
 var srch_bestEvaluatedScore = 0;
 var srch_endReason = "";
 var srch_random = null;
+var srch_mistakeRoll = -1;
+var srch_mistakeOptions = 0;
+var srch_mistakeLoss = 0;
+var srch_wasWeakened = BOOL.FALSE;
 
 function SetDifficulty(level) {
   srch_difficulty = DIFFICULTY_LEVELS[level] || DIFFICULTY_LEVELS[DEFAULT_DIFFICULTY];
@@ -1539,9 +1544,14 @@ function ClearForSearch() {
   srch_iterDepth = 1;
   srch_profile = srch_difficulty;
   srch_candidates = [];
+  srch_candidatesByDepth = [];
   srch_bestEvaluated = NOMOVE;
   srch_bestEvaluatedScore = 0;
   srch_endReason = "";
+  srch_mistakeRoll = -1;
+  srch_mistakeOptions = 0;
+  srch_mistakeLoss = 0;
+  srch_wasWeakened = BOOL.FALSE;
 }
 
 function Quiescence(alpha, beta) {
@@ -1751,26 +1761,40 @@ function SearchDifficultyRoot(depth) {
   return candidates;
 }
 
-function FinishDifficultySearch() {
-  srch_thinking = BOOL.FALSE;
-  if (srch_candidates.length < 2 || srch_depthFound < DIFFICULTY_MIN_DEPTH ||
-      Math.abs(srch_score) >= ISMATE || SearchRandom() >= srch_profile.mistakeChance) return BOOL.TRUE;
+function DifficultyChoices(candidates, bestScore, maxLoss) {
   var choices = [];
   var totalWeight = 0;
-  for (var index = 1; index < srch_candidates.length; index++) {
-    var candidate = srch_candidates[index];
-    var loss = srch_score - candidate.score;
-    if (loss < DIFFICULTY_MIN_LOSS || loss > srch_profile.maxLoss || Math.abs(candidate.score) >= ISMATE) continue;
-    var weight = srch_profile.maxLoss - loss + 1;
+  if (!candidates.length || Math.abs(bestScore) >= ISMATE) return { choices: choices, totalWeight: totalWeight };
+  for (var index = 1; index < candidates.length; index++) {
+    var candidate = candidates[index];
+    var loss = bestScore - candidate.score;
+    if (loss < DIFFICULTY_MIN_LOSS || loss > maxLoss || Math.abs(candidate.score) >= ISMATE) continue;
+    var weight = maxLoss - loss + 1;
     totalWeight += weight;
-    choices.push({ candidate: candidate, weight: weight });
+    choices.push({ candidate: candidate, weight: weight, loss: loss });
   }
+  return { choices: choices, totalWeight: totalWeight };
+}
+
+function FinishDifficultySearch() {
+  srch_thinking = BOOL.FALSE;
+  if (srch_candidates.length < 2 || srch_depthFound < DIFFICULTY_MIN_DEPTH || Math.abs(srch_score) >= ISMATE) {
+    return BOOL.TRUE;
+  }
+  srch_mistakeRoll = SearchRandom();
+  var choiceSet = DifficultyChoices(srch_candidates, srch_score, srch_profile.maxLoss);
+  var choices = choiceSet.choices;
+  var totalWeight = choiceSet.totalWeight;
+  srch_mistakeOptions = choices.length;
+  if (srch_mistakeRoll >= srch_profile.mistakeChance) return BOOL.TRUE;
   var pick = SearchRandom() * totalWeight;
   for (var choice = 0; choice < choices.length; choice++) {
     pick -= choices[choice].weight;
     if (pick < 0) {
       srch_best = choices[choice].candidate.move;
       srch_score = choices[choice].candidate.score;
+      srch_mistakeLoss = choices[choice].loss;
+      srch_wasWeakened = BOOL.TRUE;
       break;
     }
   }
@@ -1782,6 +1806,7 @@ function SearchDifficultyIterate() {
   var candidates = SearchDifficultyRoot(srch_iterDepth);
   if (candidates === null) return FinishDifficultySearch();
   srch_candidates = candidates;
+  srch_candidatesByDepth[srch_iterDepth] = candidates.slice(0);
   srch_depthFound = srch_iterDepth;
   if (!candidates.length) {
     srch_best = NOMOVE;
