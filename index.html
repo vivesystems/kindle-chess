@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <meta name="keywords" content="Chess, Kindle, Paperwhite" />
     <title>Kindle Chess</title>
-    <link href="stylesheets/styles.css?v=1.14.2" rel="stylesheet" type="text/css" />
+    <link href="stylesheets/styles.css?v=1.15.0" rel="stylesheet" type="text/css" />
     <script type="text/javascript">
       if (!window.console) console = { log: function () {} };
     </script>
@@ -23,13 +23,23 @@
       <div id="game">
       <div id="board"></div>
       <div id="panel">
-        <div id="difficulty-row">
-          <label for="difficulty">Difficulty (approx. Elo)</label>
-          <select id="difficulty">
-            <option value="1000" selected="selected">1000</option>
-            <option value="1200">1200</option>
-            <option value="1400">1400</option>
-          </select>
+        <div id="settings-row">
+          <div id="difficulty-row">
+            <label for="difficulty">Elo</label>
+            <select id="difficulty">
+              <option value="1000" selected="selected">1000</option>
+              <option value="1200">1200</option>
+              <option value="1400">1400</option>
+            </select>
+          </div>
+          <div id="book-row">
+            <label for="book-mode">Book</label>
+            <select id="book-mode">
+              <option value="on">On</option>
+              <option value="varied" selected="selected">Varied</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
         </div>
         <div id="status-row">
           <div id="status-info">
@@ -84,7 +94,7 @@
         </div>
       </div>
     </div>
-    <script src="js/engine.js?v=2.4.0"></script>
-    <script src="js/gui.js?v=1.14.2"></script>
+    <script src="js/engine.js?v=2.5.0"></script>
+    <script src="js/gui.js?v=1.15.0"></script>
   </body>
 </html>

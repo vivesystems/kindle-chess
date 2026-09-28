@@ -1,4 +1,4 @@
-var SCRIPT_VERSION = "v2.4.0-202609280958";
+var SCRIPT_VERSION = "v2.5.0-202609281046";
 
 var PIECES = {
   EMPTY: 0,
@@ -25,12 +25,16 @@ var INFINITE = 30000;
 var MATE = 29000;
 var ISMATE = 28900;
 var DEFAULT_DIFFICULTY = 1000;
+var BOOK_MODE_ON = "on";
+var BOOK_MODE_VARIED = "varied";
+var BOOK_MODE_OFF = "off";
+var DEFAULT_BOOK_MODE = BOOK_MODE_VARIED;
 var DIFFICULTY_MIN_LOSS = 15;
 var SHUFFLE_PENALTY = 25;
 var DIFFICULTY_LEVELS = {
-  1000: { depth: 3, nodes: 8000, mistakeDepth: 2, mistakeChance: 0.28, maxLoss: 80, bookPlies: 4 },
-  1200: { depth: 4, nodes: 24000, mistakeDepth: 2, mistakeChance: 0.18, maxLoss: 55, bookPlies: 6 },
-  1400: { depth: 5, nodes: 72000, mistakeDepth: 3, mistakeChance: 0.10, maxLoss: 35, bookPlies: 8 }
+  1000: { depth: 3, nodes: 8000, mistakeDepth: 2, mistakeChance: 0.28, maxLoss: 80, bookPlies: 4, bookChance: 0.50 },
+  1200: { depth: 4, nodes: 24000, mistakeDepth: 2, mistakeChance: 0.18, maxLoss: 55, bookPlies: 6, bookChance: 0.70 },
+  1400: { depth: 5, nodes: 72000, mistakeDepth: 3, mistakeChance: 0.10, maxLoss: 35, bookPlies: 8, bookChance: 0.85 }
 };
 
 var START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -285,6 +289,8 @@ var srch_depthFound = 0;
 var srch_iterDepth = 1;
 var srch_difficulty = null;
 var srch_profile = null;
+var srch_bookMode = DEFAULT_BOOK_MODE;
+var game_bookExited = BOOL.FALSE;
 var srch_candidates = [];
 var srch_candidatesByDepth = [];
 var srch_bestEvaluated = NOMOVE;
@@ -298,6 +304,16 @@ var srch_wasWeakened = BOOL.FALSE;
 
 function SetDifficulty(level) {
   srch_difficulty = DIFFICULTY_LEVELS[level] || DIFFICULTY_LEVELS[DEFAULT_DIFFICULTY];
+}
+
+function SetBookMode(mode) {
+  var nextMode = mode == BOOK_MODE_ON || mode == BOOK_MODE_VARIED || mode == BOOK_MODE_OFF ? mode : DEFAULT_BOOK_MODE;
+  if (nextMode == BOOK_MODE_VARIED && nextMode != srch_bookMode) ResetBookState();
+  srch_bookMode = nextMode;
+}
+
+function ResetBookState() {
+  game_bookExited = BOOL.FALSE;
 }
 
 function SetSearchRandom(randomFunction) {
@@ -367,7 +383,7 @@ function LineMatch(bookLine, gameLine) {
   return BOOL.TRUE;
 }
 
-function BookMove() {
+function FindBookMoves() {
   var gameLine = printGameLine();
   var bookMoves = [];
   var lengthOfLineHack = gameLine.length;
@@ -384,8 +400,13 @@ function BookMove() {
       }
     }
   }
+  return bookMoves;
+}
+
+function BookMove(bookMoves) {
+  if (!bookMoves) bookMoves = FindBookMoves();
   if (bookMoves.length == 0) return NOMOVE;
-  var num = Math.floor(Math.random() * bookMoves.length);
+  var num = Math.floor(SearchRandom() * bookMoves.length);
   return bookMoves[num];
 }
 
@@ -1829,14 +1850,21 @@ function SearchBegin() {
   ClearForSearch();
   srch_thinking = BOOL.TRUE;
   if (GameController.BookLoaded == BOOL.TRUE && (!srch_profile || brd_hisPly < srch_profile.bookPlies)) {
-    var bookMove = BookMove();
-    if (bookMove != NOMOVE) {
-      srch_best = bookMove;
-      srch_fromBook = BOOL.TRUE;
-      srch_thinking = BOOL.FALSE;
-      srch_depthFound = 0;
-      srch_score = 0;
-      return BOOL.TRUE;
+    var bookMoves = FindBookMoves();
+    if (bookMoves.length) {
+      var useBook = srch_bookMode == BOOK_MODE_ON || (!srch_profile && srch_bookMode != BOOK_MODE_OFF);
+      if (srch_bookMode == BOOK_MODE_VARIED && srch_profile && game_bookExited == BOOL.FALSE) {
+        useBook = SearchRandom() < srch_profile.bookChance;
+        if (!useBook) game_bookExited = BOOL.TRUE;
+      }
+      if (useBook) {
+        srch_best = BookMove(bookMoves);
+        srch_fromBook = BOOL.TRUE;
+        srch_thinking = BOOL.FALSE;
+        srch_depthFound = 0;
+        srch_score = 0;
+        return BOOL.TRUE;
+      }
     }
   }
   if (srch_profile) {

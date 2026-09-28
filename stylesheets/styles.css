@@ -389,14 +389,24 @@ body {
   white-space: nowrap;
 }
 
-#difficulty-row {
+#settings-row {
+  overflow: hidden;
   margin-bottom: 6px;
   text-align: left;
   white-space: nowrap;
 }
 
+#difficulty-row {
+  float: left;
+}
+
+#book-row {
+  float: right;
+}
+
 #time,
-#difficulty {
+#difficulty,
+#book-mode {
   font-size: 18px;
   height: 40px;
   min-width: 72px;

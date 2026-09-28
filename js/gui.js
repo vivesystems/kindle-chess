@@ -1,4 +1,4 @@
-var GUI_SCRIPT_VERSION = "v1.14.2-202609281008";
+var GUI_SCRIPT_VERSION = "v1.15.0-202609281046";
 var DEFAULT_SEARCH_SECONDS = 1;
 var AUTO_MOVE_PAUSE_MS = 1000;
 var PLAYER_FEEDBACK_DELAY_MS = 20;
@@ -444,6 +444,8 @@ function StartSearch() {
   srch_depth = MAXDEPTH;
   var difficulty = ById("difficulty");
   SetDifficulty(difficulty ? difficulty.value : DEFAULT_DIFFICULTY);
+  var bookMode = ById("book-mode");
+  SetBookMode(bookMode ? bookMode.value : DEFAULT_BOOK_MODE);
   var choice = ById("time");
   var seconds = DEFAULT_SEARCH_SECONDS;
   if (choice) seconds = parseFloat(choice.value);
@@ -1065,6 +1067,7 @@ function NewGame(inputSide) {
   SetAutoPlay(false);
   SetupOpen = false;
   ParseFen(START_FEN);
+  ResetBookState();
   LastFrom = SQUARES.NO_SQ;
   LastTo = SQUARES.NO_SQ;
   LastMoveWasEngine = false;
