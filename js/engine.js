@@ -1,4 +1,4 @@
-var SCRIPT_VERSION = "v2.1.0-202609280817";
+var SCRIPT_VERSION = "v2.2.0-202609280906";
 
 var PIECES = {
   EMPTY: 0,
@@ -286,9 +286,21 @@ var srch_iterDepth = 1;
 var srch_difficulty = null;
 var srch_profile = null;
 var srch_candidates = [];
+var srch_bestEvaluated = NOMOVE;
+var srch_bestEvaluatedScore = 0;
+var srch_endReason = "";
+var srch_random = null;
 
 function SetDifficulty(level) {
   srch_difficulty = DIFFICULTY_LEVELS[level] || DIFFICULTY_LEVELS[DEFAULT_DIFFICULTY];
+}
+
+function SetSearchRandom(randomFunction) {
+  srch_random = typeof randomFunction == "function" ? randomFunction : null;
+}
+
+function SearchRandom() {
+  return srch_random ? srch_random() : Math.random();
 }
 
 function BoardToFen() {
@@ -1472,8 +1484,13 @@ function GetPvLine(depth) {
 }
 
 function CheckUp() {
-  if (Now() - srch_start > srch_time) srch_stop = BOOL.TRUE;
-  if (srch_profile && srch_nodes >= srch_profile.nodes) srch_stop = BOOL.TRUE;
+  if (Now() - srch_start > srch_time) {
+    srch_stop = BOOL.TRUE;
+    if (srch_endReason == "") srch_endReason = "time";
+  } else if (srch_profile && srch_nodes >= srch_profile.nodes) {
+    srch_stop = BOOL.TRUE;
+    if (srch_endReason == "") srch_endReason = "nodes";
+  }
 }
 
 function PickNextMove(moveNum) {
@@ -1520,6 +1537,9 @@ function ClearForSearch() {
   srch_iterDepth = 1;
   srch_profile = srch_difficulty;
   srch_candidates = [];
+  srch_bestEvaluated = NOMOVE;
+  srch_bestEvaluatedScore = 0;
+  srch_endReason = "";
 }
 
 function Quiescence(alpha, beta) {
@@ -1722,7 +1742,7 @@ function SearchDifficultyRoot(depth) {
 function FinishDifficultySearch() {
   srch_thinking = BOOL.FALSE;
   if (srch_candidates.length < 2 || srch_depthFound < DIFFICULTY_MIN_DEPTH ||
-      Math.abs(srch_score) >= ISMATE || Math.random() >= srch_profile.mistakeChance) return BOOL.TRUE;
+      Math.abs(srch_score) >= ISMATE || SearchRandom() >= srch_profile.mistakeChance) return BOOL.TRUE;
   var choices = [];
   var totalWeight = 0;
   for (var index = 1; index < srch_candidates.length; index++) {
@@ -1733,7 +1753,7 @@ function FinishDifficultySearch() {
     totalWeight += weight;
     choices.push({ candidate: candidate, weight: weight });
   }
-  var pick = Math.random() * totalWeight;
+  var pick = SearchRandom() * totalWeight;
   for (var choice = 0; choice < choices.length; choice++) {
     pick -= choices[choice].weight;
     if (pick < 0) {
@@ -1754,11 +1774,15 @@ function SearchDifficultyIterate() {
   if (!candidates.length) {
     srch_best = NOMOVE;
     srch_score = SqAttacked(brd_pList[PCEINDEX(Kings[brd_side], 0)], brd_side ^ 1) ? -MATE : 0;
+    srch_endReason = "depth";
     return FinishDifficultySearch();
   }
   srch_best = candidates[0].move;
   srch_score = candidates[0].score;
+  srch_bestEvaluated = candidates[0].move;
+  srch_bestEvaluatedScore = candidates[0].score;
   if (Math.abs(srch_score) >= ISMATE || srch_iterDepth >= Math.min(srch_depth, srch_profile.depth)) {
+    if (srch_endReason == "") srch_endReason = "depth";
     return FinishDifficultySearch();
   }
   srch_iterDepth++;
@@ -1813,17 +1837,22 @@ function SearchIterate() {
   srch_score = score;
   GetPvLine(currentDepth);
   if (brd_PvArray[0] != NOMOVE) srch_best = brd_PvArray[0];
+  srch_bestEvaluated = srch_best;
+  srch_bestEvaluatedScore = srch_score;
   srch_depthFound = currentDepth;
   if (score > MATE - 64 || score < -MATE + 64) {
+    srch_endReason = "depth";
     srch_thinking = BOOL.FALSE;
     return BOOL.TRUE;
   }
   if (Now() - srch_start > srch_time * 0.65 && currentDepth >= 2) {
+    srch_endReason = "time";
     srch_thinking = BOOL.FALSE;
     return BOOL.TRUE;
   }
   srch_iterDepth++;
   if (srch_iterDepth > srch_depth) {
+    srch_endReason = "depth";
     srch_thinking = BOOL.FALSE;
     return BOOL.TRUE;
   }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <meta name="keywords" content="Chess, Kindle, Paperwhite" />
     <title>Kindle Chess</title>
-    <link href="stylesheets/styles.css?v=1.12.0" rel="stylesheet" type="text/css" />
+    <link href="stylesheets/styles.css?v=1.13.0" rel="stylesheet" type="text/css" />
     <script type="text/javascript">
       if (!window.console) console = { log: function () {} };
     </script>
@@ -17,6 +17,7 @@
         <button type="button" class="setup-choice" id="normal-game">Normal</button>
         <button type="button" class="setup-choice" id="test-black">Test with opponent Black</button>
         <button type="button" class="setup-choice" id="test-white">Test with opponent White</button>
+        <button type="button" class="setup-choice" id="benchmark-menu">Benchmark</button>
         <span id="setup-version"></span>
       </div>
       <div id="game">
@@ -60,8 +61,29 @@
         </div>
       </div>
       </div>
+      <div id="benchmark">
+        <h1>Benchmark</h1>
+        <div id="benchmark-version"></div>
+        <div id="benchmark-config"></div>
+        <div id="benchmark-estimate"></div>
+        <div id="benchmark-progress">Ready</div>
+        <div id="benchmark-bar"><div id="benchmark-bar-fill"></div></div>
+        <div id="benchmark-current"></div>
+        <div id="benchmark-actions">
+          <button type="button" id="benchmark-start">Start</button>
+          <button type="button" id="benchmark-stop" disabled="disabled">Stop</button>
+          <button type="button" id="benchmark-back">Back</button>
+        </div>
+        <div id="benchmark-summary"></div>
+        <div id="benchmark-detail"></div>
+        <div id="benchmark-pages">
+          <button type="button" id="benchmark-prev">Previous</button>
+          <span id="benchmark-page"></span>
+          <button type="button" id="benchmark-next">Next</button>
+        </div>
+      </div>
     </div>
-    <script src="js/engine.js?v=2.1.0"></script>
-    <script src="js/gui.js?v=1.12.0"></script>
+    <script src="js/engine.js?v=2.2.0"></script>
+    <script src="js/gui.js?v=1.13.0"></script>
   </body>
 </html>

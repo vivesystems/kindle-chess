@@ -1,4 +1,4 @@
-var GUI_SCRIPT_VERSION = "v1.12.0-202609280817";
+var GUI_SCRIPT_VERSION = "v1.13.0-202609280906";
 var DEFAULT_SEARCH_SECONDS = 1;
 var AUTO_MOVE_PAUSE_MS = 1000;
 var PLAYER_FEEDBACK_DELAY_MS = 20;
@@ -15,6 +15,18 @@ var LAYOUT_PANEL_SPACE = 200;
 var MAX_SQUARE_SIZE = 120;
 var TOUCH_MOVE_TOLERANCE = 12;
 var TOUCH_CLICK_DELAY = 700;
+var BENCHMARK_SEED = 20260928;
+var BENCHMARK_CASE_DELAY_MS = 25;
+var BENCHMARK_DETAIL_PAGE_SIZE = 4;
+var BENCHMARK_LEVELS = [1000, 1200, 1400];
+var BENCHMARK_TIMES = [0.5, 1, 2, 4];
+var BENCHMARK_POSITIONS = [
+  { name: "Opening", fen: START_FEN, expected: "" },
+  { name: "Middlegame", fen: "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", expected: "" },
+  { name: "Mate in one", fen: "7k/5Q2/6K1/8/8/8/8/8 w - - 0 1", expected: "mate" },
+  { name: "Save rook", fen: "7k/8/8/8/8/q7/R7/7K w - - 0 1", expected: "a2a3" },
+  { name: "Pawn endgame", fen: "8/5pk1/6p1/3P4/5PP1/4K3/8/8 w - - 0 1", expected: "" }
+];
 var SQ_SIZE = 72;
 var BoardSize = 0;
 var BoardFlipped = null;
@@ -35,6 +47,14 @@ var srch_abort = BOOL.FALSE;
 var SetupOpen = true;
 var AutoPlay = false;
 var InputSide = COLOURS.BOTH;
+var BenchmarkRunning = false;
+var BenchmarkStopRequested = false;
+var BenchmarkCases = [];
+var BenchmarkResults = [];
+var BenchmarkCaseIndex = 0;
+var BenchmarkSuiteStart = 0;
+var BenchmarkBookLoaded = BOOL.TRUE;
+var BenchmarkDetailPage = 0;
 
 var MirrorFiles = [FILES.FILE_H, FILES.FILE_G, FILES.FILE_F, FILES.FILE_E, FILES.FILE_D, FILES.FILE_C, FILES.FILE_B, FILES.FILE_A];
 var MirrorRanks = [RANKS.RANK_8, RANKS.RANK_7, RANKS.RANK_6, RANKS.RANK_5, RANKS.RANK_4, RANKS.RANK_3, RANKS.RANK_2, RANKS.RANK_1];
@@ -586,7 +606,287 @@ function ShowSetup() {
   SetupOpen = true;
   BoardTouch = null;
   ById("game").style.display = "none";
+  ById("benchmark").style.display = "none";
   ById("setup").style.display = "block";
+}
+
+function FormatBenchmarkDuration(milliseconds) {
+  var seconds = Math.max(0, Math.round(milliseconds / 1000));
+  var minutes = Math.floor(seconds / 60);
+  seconds %= 60;
+  if (minutes > 0) return minutes + "m " + seconds + "s";
+  return seconds + "s";
+}
+
+function BenchmarkMaximumMilliseconds(cases) {
+  var total = 0;
+  for (var index = 0; index < cases.length; index++) total += cases[index].seconds * 1000;
+  return total;
+}
+
+function BuildBenchmarkCases() {
+  var cases = [];
+  var positionIndex;
+  var levelIndex;
+  var timeIndex;
+  for (positionIndex = 0; positionIndex < BENCHMARK_POSITIONS.length; positionIndex++) {
+    for (levelIndex = 0; levelIndex < BENCHMARK_LEVELS.length; levelIndex++) {
+      for (timeIndex = 0; timeIndex < BENCHMARK_TIMES.length; timeIndex++) {
+        cases.push({
+          position: BENCHMARK_POSITIONS[positionIndex],
+          level: BENCHMARK_LEVELS[levelIndex],
+          seconds: BENCHMARK_TIMES[timeIndex]
+        });
+      }
+    }
+  }
+  return cases;
+}
+
+function CreateBenchmarkRandom(caseIndex) {
+  var state = (BENCHMARK_SEED + caseIndex * 2654435761) >>> 0;
+  return function () {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+function SetBenchmarkButtons(running) {
+  ById("benchmark-start").disabled = running;
+  ById("benchmark-stop").disabled = !running;
+  ById("benchmark-back").disabled = running;
+}
+
+function ShowBenchmark() {
+  StopSearch();
+  SetAutoPlay(false);
+  SetupOpen = true;
+  ById("setup").style.display = "none";
+  ById("game").style.display = "none";
+  ById("benchmark").style.display = "block";
+  BenchmarkCases = BuildBenchmarkCases();
+  ById("benchmark-version").innerHTML = "App " + GUI_SCRIPT_VERSION.split("-")[0] + " / Engine " + SCRIPT_VERSION.split("-")[0];
+  ById("benchmark-config").innerHTML = BENCHMARK_POSITIONS.length + " positions &times; " + BENCHMARK_LEVELS.length +
+    " levels &times; " + BENCHMARK_TIMES.length + " limits = " + BenchmarkCases.length +
+    " cases. Book off; seed " + BENCHMARK_SEED + "; search reset per case.";
+  ById("benchmark-estimate").innerHTML = "Estimated duration: about 2 minutes; search-time ceiling " +
+    FormatBenchmarkDuration(BenchmarkMaximumMilliseconds(BenchmarkCases)) + ".";
+  if (!BenchmarkResults.length) {
+    ById("benchmark-progress").innerHTML = "Ready";
+    ById("benchmark-current").innerHTML = "The benchmark does not change difficulty settings.";
+  }
+  SetBenchmarkButtons(false);
+}
+
+function BenchmarkStart() {
+  if (BenchmarkRunning) return;
+  StopSearch();
+  BenchmarkCases = BuildBenchmarkCases();
+  BenchmarkResults = [];
+  BenchmarkCaseIndex = 0;
+  BenchmarkDetailPage = 0;
+  BenchmarkStopRequested = false;
+  BenchmarkRunning = true;
+  BenchmarkSuiteStart = Now();
+  BenchmarkBookLoaded = GameController.BookLoaded;
+  GameController.BookLoaded = BOOL.FALSE;
+  srch_abort = BOOL.FALSE;
+  ById("benchmark-summary").innerHTML = "";
+  ById("benchmark-detail").innerHTML = "";
+  ById("benchmark-pages").style.display = "none";
+  ById("benchmark-bar-fill").style.width = "0%";
+  SetBenchmarkButtons(true);
+  BenchmarkStartCase();
+}
+
+function BenchmarkStartCase() {
+  if (BenchmarkStopRequested || BenchmarkCaseIndex >= BenchmarkCases.length) {
+    BenchmarkFinishSuite(BenchmarkStopRequested);
+    return;
+  }
+  var testCase = BenchmarkCases[BenchmarkCaseIndex];
+  ParseFen(testCase.position.fen);
+  SetDifficulty(testCase.level);
+  srch_depth = MAXDEPTH;
+  srch_time = testCase.seconds * 1000;
+  SetSearchRandom(CreateBenchmarkRandom(BenchmarkCaseIndex));
+  GameController.BookLoaded = BOOL.FALSE;
+  ById("benchmark-progress").innerHTML = "Case " + (BenchmarkCaseIndex + 1) + " of " + BenchmarkCases.length;
+  ById("benchmark-current").innerHTML = testCase.position.name + " &middot; " + testCase.level + " &middot; " + testCase.seconds +
+    "s max<br />Elapsed " + FormatBenchmarkDuration(Now() - BenchmarkSuiteStart) + "; up to " +
+    FormatBenchmarkDuration(BenchmarkRemainingMaximum()) + " remaining";
+  SearchBegin();
+  searchTimer = setTimeout(BenchmarkSearchStep, BENCHMARK_CASE_DELAY_MS);
+}
+
+function BenchmarkRemainingMaximum() {
+  var remaining = 0;
+  for (var index = BenchmarkCaseIndex; index < BenchmarkCases.length; index++) {
+    remaining += BenchmarkCases[index].seconds * 1000;
+  }
+  if (BenchmarkCaseIndex < BenchmarkCases.length) {
+    remaining -= Math.min(BenchmarkCases[BenchmarkCaseIndex].seconds * 1000, Math.max(0, Now() - srch_start));
+  }
+  return remaining;
+}
+
+function BenchmarkSearchStep() {
+  searchTimer = null;
+  if (BenchmarkStopRequested) {
+    BenchmarkFinishSuite(true);
+    return;
+  }
+  var done = SearchIterate();
+  var completedPercent = Math.floor((BenchmarkCaseIndex * 100) / BenchmarkCases.length);
+  ById("benchmark-bar-fill").style.width = completedPercent + "%";
+  ById("benchmark-current").innerHTML = BenchmarkCases[BenchmarkCaseIndex].position.name + " &middot; " +
+    BenchmarkCases[BenchmarkCaseIndex].level + " &middot; " + BenchmarkCases[BenchmarkCaseIndex].seconds +
+    "s max &middot; depth " + srch_depthFound + " &middot; " + srch_nodes + " nodes<br />Elapsed " +
+    FormatBenchmarkDuration(Now() - BenchmarkSuiteStart) + "; up to " + FormatBenchmarkDuration(BenchmarkRemainingMaximum()) + " remaining";
+  if (done == BOOL.TRUE) {
+    BenchmarkRecordCase();
+    BenchmarkCaseIndex++;
+    ById("benchmark-bar-fill").style.width = Math.floor((BenchmarkCaseIndex * 100) / BenchmarkCases.length) + "%";
+    searchTimer = setTimeout(BenchmarkStartCase, BENCHMARK_CASE_DELAY_MS);
+    return;
+  }
+  searchTimer = setTimeout(BenchmarkSearchStep, BENCHMARK_CASE_DELAY_MS);
+}
+
+function BenchmarkMateDelivered(move) {
+  if (move == NOMOVE || MakeMove(move) == BOOL.FALSE) return false;
+  var inCheck = SqAttacked(brd_pList[PCEINDEX(Kings[brd_side], 0)], brd_side ^ 1) == BOOL.TRUE;
+  var legal = 0;
+  GenerateMoves();
+  for (var index = brd_moveListStart[brd_ply]; index < brd_moveListStart[brd_ply + 1]; index++) {
+    if (MakeMove(brd_moveList[index]) == BOOL.FALSE) continue;
+    TakeMove();
+    legal++;
+    break;
+  }
+  TakeMove();
+  return inCheck && legal == 0;
+}
+
+function BenchmarkTacticalPass(position, move) {
+  if (position.expected == "") return null;
+  if (position.expected == "mate") return BenchmarkMateDelivered(move);
+  return move != NOMOVE && PrMove(move) == position.expected;
+}
+
+function BenchmarkRecordCase() {
+  var testCase = BenchmarkCases[BenchmarkCaseIndex];
+  var elapsed = Math.max(1, Now() - srch_start);
+  var reason = srch_endReason;
+  if (reason == "") {
+    if (srch_profile && srch_nodes >= srch_profile.nodes) reason = "nodes";
+    else if (elapsed >= srch_time) reason = "time";
+    else reason = "depth";
+  }
+  BenchmarkResults.push({
+    position: testCase.position.name,
+    level: testCase.level,
+    seconds: testCase.seconds,
+    elapsed: elapsed,
+    depth: srch_depthFound,
+    nodes: srch_nodes,
+    nps: Math.round(srch_nodes * 1000 / elapsed),
+    move: srch_best,
+    score: srch_score,
+    bestMove: srch_bestEvaluated,
+    bestScore: srch_bestEvaluatedScore,
+    reason: reason,
+    tactical: BenchmarkTacticalPass(testCase.position, srch_best)
+  });
+}
+
+function BenchmarkStop() {
+  if (!BenchmarkRunning) return;
+  BenchmarkStopRequested = true;
+  srch_stop = BOOL.TRUE;
+  srch_thinking = BOOL.FALSE;
+  ById("benchmark-progress").innerHTML = "Stopping...";
+}
+
+function BenchmarkFinishSuite(stopped) {
+  BenchmarkRunning = false;
+  srch_thinking = BOOL.FALSE;
+  searchTimer = null;
+  SetSearchRandom(null);
+  GameController.BookLoaded = BenchmarkBookLoaded;
+  SetBenchmarkButtons(false);
+  ById("benchmark-bar-fill").style.width = Math.floor((BenchmarkResults.length * 100) / BenchmarkCases.length) + "%";
+  ById("benchmark-progress").innerHTML = stopped ? "Stopped: " + BenchmarkResults.length + " of " + BenchmarkCases.length +
+    " cases" : "Complete: " + BenchmarkResults.length + " cases";
+  ById("benchmark-current").innerHTML = "Elapsed " + FormatBenchmarkDuration(Now() - BenchmarkSuiteStart);
+  BenchmarkRenderSummary();
+  BenchmarkRenderDetails();
+}
+
+function BenchmarkRenderSummary() {
+  var html = "<table><tr><th>Level</th><th>Depth</th><th>N/s</th><th>Tactics</th><th>Ends T/D/N</th></tr>";
+  for (var levelIndex = 0; levelIndex < BENCHMARK_LEVELS.length; levelIndex++) {
+    var level = BENCHMARK_LEVELS[levelIndex];
+    var count = 0;
+    var depth = 0;
+    var nodes = 0;
+    var elapsed = 0;
+    var tacticalPass = 0;
+    var tacticalTotal = 0;
+    var endings = { time: 0, depth: 0, nodes: 0 };
+    for (var resultIndex = 0; resultIndex < BenchmarkResults.length; resultIndex++) {
+      var result = BenchmarkResults[resultIndex];
+      if (result.level != level) continue;
+      count++;
+      depth += result.depth;
+      nodes += result.nodes;
+      elapsed += result.elapsed;
+      if (result.tactical !== null) {
+        tacticalTotal++;
+        if (result.tactical) tacticalPass++;
+      }
+      if (endings[result.reason] !== undefined) endings[result.reason]++;
+    }
+    html += "<tr><td>" + level + "</td><td>" + (count ? (depth / count).toFixed(1) : "-") + "</td><td>" +
+      (elapsed ? Math.round(nodes * 1000 / elapsed) : 0) + "</td><td>" + tacticalPass + "/" + tacticalTotal +
+      "</td><td>" + endings.time + "/" + endings.depth + "/" + endings.nodes + "</td></tr>";
+  }
+  html += "</table><div class=\"benchmark-note\">T/D/N = time/depth/node budget. This measures device search speed, reached depth, budget limits, chosen versus best-evaluated moves, and two basic tactics. It does not establish Elo or broad playing strength; the presets remain uncalibrated.</div>";
+  ById("benchmark-summary").innerHTML = html;
+}
+
+function BenchmarkRenderDetails() {
+  var pageCount = Math.max(1, Math.ceil(BenchmarkResults.length / BENCHMARK_DETAIL_PAGE_SIZE));
+  if (BenchmarkDetailPage >= pageCount) BenchmarkDetailPage = pageCount - 1;
+  var first = BenchmarkDetailPage * BENCHMARK_DETAIL_PAGE_SIZE;
+  var last = Math.min(BenchmarkResults.length, first + BENCHMARK_DETAIL_PAGE_SIZE);
+  var html = "";
+  for (var index = first; index < last; index++) {
+    var result = BenchmarkResults[index];
+    var tactical = result.tactical === null ? "" : result.tactical ? " &middot; tactic PASS" : " &middot; tactic FAIL";
+    html += "<div class=\"benchmark-result\"><div class=\"benchmark-result-title\">" + (index + 1) + ". " + result.position +
+      " &middot; " + result.level + " &middot; " + result.seconds + "s</div>" + (result.elapsed / 1000).toFixed(2) +
+      "s &middot; d" + result.depth + " &middot; " + result.nodes + " nodes &middot; " + result.nps + " n/s &middot; " +
+      result.reason + tactical + "<br />Best " + PrMove(result.bestMove) + " " + ScoreText(result.bestScore) +
+      " &middot; played " + PrMove(result.move) + " " + ScoreText(result.score) + "</div>";
+  }
+  ById("benchmark-detail").innerHTML = html;
+  ById("benchmark-pages").style.display = BenchmarkResults.length ? "block" : "none";
+  ById("benchmark-page").innerHTML = "Page " + (BenchmarkDetailPage + 1) + "/" + pageCount;
+  ById("benchmark-prev").disabled = BenchmarkDetailPage == 0;
+  ById("benchmark-next").disabled = BenchmarkDetailPage >= pageCount - 1;
+}
+
+function BenchmarkPreviousPage() {
+  if (BenchmarkDetailPage <= 0) return;
+  BenchmarkDetailPage--;
+  BenchmarkRenderDetails();
+}
+
+function BenchmarkNextPage() {
+  if ((BenchmarkDetailPage + 1) * BENCHMARK_DETAIL_PAGE_SIZE >= BenchmarkResults.length) return;
+  BenchmarkDetailPage++;
+  BenchmarkRenderDetails();
 }
 
 function StartGame(mode) {
@@ -696,6 +996,12 @@ function InitGui() {
   Bind(ById("normal-game"), "click", function () { StartGame("normal"); });
   Bind(ById("test-black"), "click", function () { StartGame("test-black"); });
   Bind(ById("test-white"), "click", function () { StartGame("test-white"); });
+  Bind(ById("benchmark-menu"), "click", ShowBenchmark);
+  Bind(ById("benchmark-start"), "click", BenchmarkStart);
+  Bind(ById("benchmark-stop"), "click", BenchmarkStop);
+  Bind(ById("benchmark-back"), "click", ShowSetup);
+  Bind(ById("benchmark-prev"), "click", BenchmarkPreviousPage);
+  Bind(ById("benchmark-next"), "click", BenchmarkNextPage);
   Bind(ById("flip"), "click", FlipBoard);
   Bind(ById("undo"), "click", UndoMove);
   Bind(ById("go"), "click", GoMove);
